@@ -29,7 +29,7 @@ if is_ipython:
 from PIL import Image
 from dqn_utils.dqn_models import Experience
 
-device = torch.device("cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class StatusEnum(enum.Enum):
     small = 1

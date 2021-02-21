@@ -42,6 +42,7 @@ class MountainCar(object):
         self.car_height = 30
         self.sprites = pygame.sprite.Group()
         self.frames_count = 0
+        self.step_count = 0
         self.max_frames = 10000
         self.is_debug = is_debug
         self.frame_speed = 0
@@ -425,7 +426,7 @@ class MountainCar(object):
         self.total_score = 0
         self.total_score_2 = 0
         self.total_score_3 = 0
-        self.frames_count = 0
+        self.step_count = 0
         self.__render()
 
     def step(self, action):
@@ -457,6 +458,7 @@ class MountainCar(object):
         r = self.step(action)
         next_state = self.get_state()
         terminal = self.is_terminal()
+        self.step_count += 1
         return next_state, r, terminal, self.total_score
 
     def get_state_space(self):
@@ -481,7 +483,7 @@ class MountainCar(object):
             return int(pos_index * self.max_states_per_dim + vel_index)
 
     def is_terminal(self):
-        if self.pos > self.goal_pos or self.frames_count > self.episode_limit:
+        if self.pos > self.goal_pos or self.step_count > self.episode_limit:
             return True
         else:
             return False

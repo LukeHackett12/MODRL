@@ -1,7 +1,7 @@
 import time
 import numpy as np
 
-from fruit.process.image import imresize
+from custom_envs.image import imresize
 
 
 class Utils():

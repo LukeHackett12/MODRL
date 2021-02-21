@@ -3,7 +3,7 @@ import pygame
 import os
 import sys
 import collections as cl
-from utils import Utils
+from custom_envs.utils import Utils
 from custom_envs.mountain_car.sprites import GoalSprite, CarSprite
 from custom_envs.mountain_car.constants import MountainCarConstants
 
@@ -13,7 +13,7 @@ class MountainCar(object):
                  gravity_factor=-0.0025, hill_peak_freq=3.0, default_init_pos=-0.5, default_init_vel=0.0,
                  reward_per_step=-1, reward_at_goal=0, random_starts=False, transition_noise=0., seed=None,
                  render=True, speed=60, is_debug=False, frame_skip=1, friction=0, graphical_state=False,
-                 discrete_states=6):
+                 discrete_states=6, episode_limit=200):
         self.vel = default_init_vel
         self.pos = default_init_pos
         self.min_pos = min_pos
@@ -59,6 +59,7 @@ class MountainCar(object):
         self.total_score_3 = 0
         self.graphical_state = graphical_state
         self.max_states_per_dim = discrete_states
+        self.episode_limit = episode_limit
 
         if seed is None or seed < 0 or seed >= 9999:
             if seed is not None and (seed < 0 or seed >= 9999):
@@ -143,7 +144,7 @@ class MountainCar(object):
                            random_starts=self.rand_starts, transition_noise=self.trans_noise, seed=seed,
                            render=self.rd, speed=self.speed, is_debug=self.is_debug, frame_skip=self.frame_skip,
                            friction=self.friction, graphical_state=self.graphical_state,
-                           discrete_states=self.max_states_per_dim)
+                           discrete_states=self.max_states_per_dim, episode_limit=self.episode_limit)
 
     def get_num_of_objectives(self):
         return self.num_of_objs
@@ -161,7 +162,7 @@ class MountainCar(object):
         # Init Pygame engine
         pygame.init()
 
-        self.font = pygame.font.Font(self.current_path + "/../../common/fonts/font.ttf", 15)
+        self.font = pygame.font.Font(self.current_path + "/font.ttf", 15)
 
         if self.rd:
             pygame.display.set_caption(MountainCar.get_game_name())
@@ -424,6 +425,7 @@ class MountainCar(object):
         self.total_score = 0
         self.total_score_2 = 0
         self.total_score_3 = 0
+        self.frames_count = 0
         self.__render()
 
     def step(self, action):
@@ -455,12 +457,13 @@ class MountainCar(object):
         r = self.step(action)
         next_state = self.get_state()
         terminal = self.is_terminal()
-        return next_state, r, terminal
+        return next_state, r, terminal, self.total_score
 
     def get_state_space(self):
         if self.graphical_state:
             return [self.screen_size, self.screen_size]
         else:
+            #TODO
             from fruit.types.priv import Space
             return Space(0, self.max_states_per_dim * self.max_states_per_dim - 1, True)
 
@@ -478,7 +481,7 @@ class MountainCar(object):
             return int(pos_index * self.max_states_per_dim + vel_index)
 
     def is_terminal(self):
-        if self.pos > self.goal_pos:
+        if self.pos > self.goal_pos or self.frames_count > self.episode_limit:
             return True
         else:
             return False

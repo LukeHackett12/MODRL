@@ -1,6 +1,6 @@
 import numpy
 import random
-from segment_tree import SumTree
+from dqn_utils.segment_tree import SumTree
 
 class Experience(object):
     """ The class represents prioritized experience replay buffer.

@@ -1,6 +1,6 @@
 from custom_envs.deep_sea_treasure.mdp import TransitionList
 from custom_envs.deep_sea_treasure.sprites import SubmarineSprite, TreasureSprite
-from utils import Utils
+from custom_envs.utils import Utils
 import numpy as np
 import pygame
 import os

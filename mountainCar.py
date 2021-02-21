@@ -3,8 +3,6 @@
 #from gym_super_mario_bros.actions import SIMPLE_MOVEMENT, RIGHT_ONLY
 from custom_envs.mountain_car.engine import MountainCar
 
-import numpy as np
-
 import torch
 from torch import FloatTensor, LongTensor, BoolTensor
 from torch.autograd import Variable
@@ -14,8 +12,11 @@ import torch.nn.functional as F
 from torchvision import transforms as T
 
 import enum
+import random
 from collections import namedtuple, deque
 from typing import NamedTuple
+
+import numpy as np
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -26,7 +27,7 @@ if is_ipython:
     from IPython import display
 
 from PIL import Image
-from agents.dqn_models import Experience
+from dqn_utils.dqn_models import Experience
 
 device = torch.device("cpu")
 
@@ -44,31 +45,34 @@ class Transition(NamedTuple):
 
 
 class DQN(nn.Module):
-    def __init__(self, h, w, outputs):
+    def __init__(self, input_shape, num_actions):
         super(DQN, self).__init__()
-        self.conv1 = nn.Conv2d(3, 16, kernel_size=5, stride=2)
-        self.bn1 = nn.BatchNorm2d(16)
-        self.conv2 = nn.Conv2d(16, 32, kernel_size=5, stride=2)
-        self.bn2 = nn.BatchNorm2d(32)
-        self.conv3 = nn.Conv2d(32, 32, kernel_size=5, stride=2)
-        self.bn3 = nn.BatchNorm2d(32)
+        self._input_shape = input_shape
+        self._num_actions = num_actions
 
-        # Number of Linear input connections depends on output of conv2d layers
-        # and therefore the input image size, so compute it.
-        def conv2d_size_out(size, kernel_size = 5, stride = 2):
-            return (size - (kernel_size - 1) - 1) // stride  + 1
-        convw = conv2d_size_out(conv2d_size_out(conv2d_size_out(w)))
-        convh = conv2d_size_out(conv2d_size_out(conv2d_size_out(h)))
-        linear_input_size = convw * convh * 32
-        self.head = nn.Linear(linear_input_size, outputs)
+        self.features = nn.Sequential(
+            nn.Conv2d(input_shape[0], 32, kernel_size=8, stride=4),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=4, stride=2),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, stride=1),
+            nn.ReLU()
+        )
 
-    # Called with either one element to determine next action, or a batch
-    # during optimization. Returns tensor([[left0exp,right0exp]...]).
+        self.fc = nn.Sequential(
+            nn.Linear(self.feature_size, 512),
+            nn.ReLU(),
+            nn.Linear(512, num_actions)
+        )
+
     def forward(self, x):
-        x = F.relu(self.bn1(self.conv1(x)))
-        x = F.relu(self.bn2(self.conv2(x)))
-        x = F.relu(self.bn3(self.conv3(x)))
-        return self.head(x.view(x.size(0), -1))
+        x = self.features(x).view(x.size()[0], -1)
+        return self.fc(x)
+    
+    @property
+    def feature_size(self):
+        x = self.features(torch.zeros(1, *self._input_shape))
+        return x.view(1, -1).size(1)
 
 class MarioAgent:
     def __init__(self, stateShape, actionSpace, numPicks, memorySize):
@@ -83,15 +87,15 @@ class MarioAgent:
 
         self.alpha = 0.00025
         self.epsilon = 0.99
-        self.epsilon_decay = 0.99975
+        self.epsilon_decay = 0.9999975
         self.epsilon_min=0.05
         self.eps_threshold = 0
 
         self.gamma = 0.999
         self.tau = 1e-3
 
-        self.trainNetwork = DQN(stateShape[1],stateShape[2], actionSpace.n).to(device)
-        self.targetNetwork = DQN(stateShape[1],stateShape[2], actionSpace.n).to(device)
+        self.trainNetwork = DQN(stateShape, len(actionSpace)).to(device)
+        self.targetNetwork = DQN(stateShape, len(actionSpace)).to(device)
         
         self.targetNetwork.load_state_dict(self.trainNetwork.state_dict())
         self.targetNetwork.eval()
@@ -161,7 +165,7 @@ class MarioAgent:
       self.epsilon *= self.epsilon_decay
 
       if np.random.rand(1) < self.epsilon:
-          action = self.actionSpace.sample()
+          action = random.sample(self.actionSpace, 1)[0]
       else:
           currState = currState.unsqueeze(0).to(device)
           with torch.no_grad():
@@ -172,7 +176,7 @@ class MarioAgent:
         self.replayMemory.add(memory, loss)
 
     def soft_update(self):
-        for target_param, train_param in zip(self.targetNetwork.net.parameters(), self.trainNetwork.net.parameters()):
+        for target_param, train_param in zip(self.targetNetwork.parameters(), self.trainNetwork.parameters()):
             target_param.data.copy_(self.tau*train_param.data + (1.0-self.tau)*target_param.data)
 
     def save(self):
@@ -186,27 +190,27 @@ class MarioAgent:
         print(f"MarioNet saved to {save_path} done!")
 
 resize = T.Compose([T.ToPILImage(),
-                    T.Resize(40, interpolation=Image.CUBIC),
+                    T.Resize(84, interpolation=Image.CUBIC),
                     T.ToTensor()])
 
-def get_screen():
+def process_screen(observation):
     # Returned screen requested by gym is 400x600x3, but is sometimes larger
     # such as 800x1200x3. Transpose it into torch order (CHW).
-    screen = env.render(mode='rgb_array').transpose((2, 0, 1))
+    screen = observation.transpose((2, 1, 0))
     screen = np.ascontiguousarray(screen, dtype=np.float32) / 255
     screen = torch.from_numpy(screen)
     # Resize, and add a batch dimension (BCHW)
     return resize(screen).unsqueeze(0).to(device)
 
-episode_heights = []
+episode_score = []
 
 def plot_heights():
     plt.figure(2)
     plt.clf()
-    heights_t = torch.tensor(episode_heights, dtype=torch.float)
+    heights_t = torch.tensor(episode_score, dtype=torch.float)
     plt.title('Training...')
     plt.xlabel('Episode')
-    plt.ylabel('Height')
+    plt.ylabel('Score')
     plt.plot(heights_t.numpy())
     # Take 100 episode averages and plot them too
     if len(heights_t) >= 100:
@@ -219,40 +223,32 @@ def plot_heights():
         display.clear_output(wait=True)
         display.display(plt.gcf())
 
-env = MountainCar(seed=100)
-env.reset()
-print(np.shape(get_screen().cpu().squeeze(0).permute(1, 2, 0).numpy()))
-plt.figure()
-plt.imshow(get_screen().cpu().squeeze(0).permute(1, 2, 0).numpy(),
-           interpolation='none')
-plt.title('Example extracted screen')
-plt.show()
-
-
-agent = MarioAgent(stateShape=(3, 40, 60),
-                   actionSpace=env.action_space, numPicks=128, memorySize=10000)
+env = MountainCar(speed=1000, graphical_state=True, render=True, is_debug=True)
+agent = MarioAgent(stateShape=(3, 84, 84),
+                   actionSpace=env.get_action_space(), numPicks=128, memorySize=10000)
 
 def episode():
     done = False
-    env.reset()
     rewardSum = 0
     lossSum = 0
 
-    currState = get_screen()
+    env.reset()
+    currState = process_screen(env.get_state())
     lastState = currState
     state = currState - lastState
 
-    maxPos = -100
+    maxScore = -100000
 
     while not done:
         stateT = Variable(state)
 
         action = agent.selectAction(stateT)
-        obs, reward, done, _ = env.step(action)
-        maxPos =  max(maxPos, obs[0])
+        obs, reward, done, score = env.step_all(action)
+        maxScore =  max(maxScore, score)
        
+        reward = np.sum(reward)
         lastState = currState
-        currState = get_screen()
+        currState = process_screen(obs)
 
         if not done:
             nextState = Variable(currState - lastState).to(device)
@@ -272,10 +268,10 @@ def episode():
         agent.addMemory((stateT, actionT, rewardT, nextState, doneT), loss)
         lossSum += loss
 
-        if ep % 100 == 0:
-            env.render()
+        #if ep % 100 == 0:
+        env.render()
 
-    episode_heights.append(maxPos)
+    episode_score.append(maxScore)
     plot_heights()
 
     if ep % 150 == 0:

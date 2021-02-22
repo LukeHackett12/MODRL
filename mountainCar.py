@@ -51,12 +51,13 @@ class DQN(nn.Module):
         self._num_actions = num_actions
 
         self.features = nn.Sequential(
-            nn.Conv2d(input_shape[0], 32, kernel_size=8, stride=4),
+            nn.Conv2d(in_channels=input_shape[0], out_channels=32, kernel_size=8, stride=4),
             nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=4, stride=2),
+            nn.Conv2d(in_channels=32, out_channels=64, kernel_size=4, stride=2),
             nn.ReLU(),
-            nn.Conv2d(64, 64, kernel_size=3, stride=1),
-            nn.ReLU()
+            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1),
+            nn.ReLU(),
+            nn.Flatten(),
         )
 
         self.fc = nn.Sequential(
@@ -268,8 +269,8 @@ def episode():
         agent.addMemory((stateT, actionT, rewardT, nextState, doneT), loss)
         lossSum += loss
 
-        #if ep % 100 == 0:
-        env.render()
+        if ep % 100 == 0:
+            env.render()
 
     episode_score.append(maxScore)
     plot_heights()

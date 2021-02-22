@@ -75,7 +75,7 @@ class DQN(nn.Module):
         x = self.features(torch.zeros(1, *self._input_shape))
         return x.view(1, -1).size(1)
 
-class MarioAgent:
+class DQNAgent:
     def __init__(self, stateShape, actionSpace, numPicks, memorySize):
         self.numPicks = numPicks
         self.memorySize = memorySize
@@ -224,8 +224,8 @@ def plot_heights():
         display.clear_output(wait=True)
         display.display(plt.gcf())
 
-env = MountainCar(speed=1000, graphical_state=True, render=True, is_debug=True)
-agent = MarioAgent(stateShape=(3, 84, 84),
+env = MountainCar(speed=1e8, graphical_state=True, render=True, is_debug=True)
+agent = DQNAgent(stateShape=(3, 84, 84),
                    actionSpace=env.get_action_space(), numPicks=128, memorySize=10000)
 
 def episode():

@@ -446,7 +446,7 @@ class DeepSeaTreasure(object):
         if self.graphical_state:
             return [self.width, self.height]
         else:
-            from fruit.types.priv import Space
+            from custom_envs.priv import Space
             return Space(0, self.num_of_cols * self.num_of_rows - 1, True)
 
     def get_action_space(self):

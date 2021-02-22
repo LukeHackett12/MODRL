@@ -466,7 +466,7 @@ class MountainCar(object):
             return [self.screen_size, self.screen_size]
         else:
             #TODO
-            from fruit.types.priv import Space
+            from custom_envs.priv import Space
             return Space(0, self.max_states_per_dim * self.max_states_per_dim - 1, True)
 
     def get_action_space(self):

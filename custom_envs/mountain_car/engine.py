@@ -428,6 +428,7 @@ class MountainCar(object):
         self.total_score_3 = 0
         self.step_count = 0
         self.__render()
+        return self.get_state()
 
     def step(self, action):
 
@@ -459,7 +460,7 @@ class MountainCar(object):
         next_state = self.get_state()
         terminal = self.is_terminal()
         self.step_count += 1
-        return next_state, r, terminal, self.total_score
+        return next_state, r, terminal, [self.pos, self.vel]
 
     def get_state_space(self):
         if self.graphical_state:

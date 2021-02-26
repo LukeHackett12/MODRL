@@ -279,12 +279,14 @@ def episode():
         rewardT = Variable(FloatTensor([rewardSum])).to(device)
         doneT = Variable(BoolTensor([done])).to(device)
 
-        rewardsSum = np.add(rewardsSum, reward)
-        state = nextState
-
         loss = agent.trainDQN()
         agent.addMemory((stateT, actionT, rewardT, nextState, doneT), loss)
         lossSum += loss
+
+        rewardsSum = np.add(rewardsSum, reward)
+        state = nextState
+
+        
 
     episode_score.append(rewardsSum)
     episode_loss.append(lossSum)

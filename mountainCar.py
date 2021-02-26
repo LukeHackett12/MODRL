@@ -116,13 +116,6 @@ class DQNAgent:
         batch = Transition(*zip(*samples[0]))
         currState,action,reward,nextState,done = batch
 
-        '''
-        states => actions
-        need ideal actions => Q LERN
-        '''
-        '''currState, nextState, action, reward, done = map(
-            torch.stack, zip(*samples))
-        '''
         reward = torch.flatten(FloatTensor(reward)).to(device)
         done = torch.flatten(BoolTensor(done)).to(device)
 
@@ -138,11 +131,8 @@ class DQNAgent:
 
         Q_futures = torch.zeros(self.numPicks, device=device)
         Q_futures[nonFinalMask] = self.targetNetwork(nextStateNonFinal.squeeze(1)).max(1)[0].detach()
-       # Q_futures_best = torch.argmax(Q_futures, axis=1)
-        #Q_next = self.trainNetwork(nextState)
-        '''(reward + (self.gamma * Q_futures)).unsqueeze(1).float() '''
 
-        Q_next = (reward * done + (reward + Q_futures * self.gamma)*~done).unsqueeze(1)
+        Q_next = (reward + (reward + Q_futures * self.gamma)*~done).unsqueeze(1)
 
         self.optimizer.zero_grad()
         loss_fn = nn.SmoothL1Loss()
@@ -263,11 +253,12 @@ def episode():
         doneT = Variable(BoolTensor([done])).to(device)
 
         rewardSum += reward
-        state = nextState
 
         loss = agent.trainDQN()
         agent.addMemory((stateT, actionT, rewardT, nextState, doneT), loss)
         lossSum += loss
+
+        state = nextState
 
         if ep % 100 == 0:
             env.render()

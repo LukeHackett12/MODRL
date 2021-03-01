@@ -398,17 +398,16 @@ class MountainCar(object):
         self.seed = seed
 
     def reset(self):
-
         for sprite in self.sprites:
             sprite.kill()
 
         self.pos = self.default_init_pos
         self.vel = self.default_init_vel
         if self.rand_starts:
-            rand_start_pos = self.default_init_pos + 0.25 * (np.random.rand() - 0.5)
+            rng = np.random.RandomState()
+            rand_start_pos = rng.uniform(low=-0.6, high=-0.4)
             self.pos = rand_start_pos
-            rand_start_vel = self.default_init_vel + 0.25 * (np.random.rand() - 0.5)
-            self.vel = rand_start_vel
+            self.vel = 0
 
         self.__generate_car()
 
@@ -460,7 +459,7 @@ class MountainCar(object):
         next_state = self.get_state()
         terminal = self.is_terminal()
         self.step_count += 1
-        return next_state, r, terminal, [self.pos, self.vel]
+        return next_state, r, terminal, self.total_score
 
     def get_state_space(self):
         if self.graphical_state:
@@ -479,9 +478,7 @@ class MountainCar(object):
             pygame.pixelcopy.surface_to_array(self.current_buffer, self.screen)
             return self.current_buffer
         else:
-            pos_index = np.floor((self.pos - self.min_pos) * self.max_states_per_dim / (self.max_pos - self.min_pos))
-            vel_index = np.floor((self.vel - self.min_vel) * self.max_states_per_dim / (self.max_vel - self.min_vel))
-            return int(pos_index * self.max_states_per_dim + vel_index)
+            return np.array([self.pos, self.vel])
 
     def is_terminal(self):
         if self.pos > self.goal_pos or self.step_count > self.episode_limit:

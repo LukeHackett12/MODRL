@@ -5,7 +5,6 @@ from PIL import Image
 import gym
 
 import torch
-from torch import FloatTensor, LongTensor, BoolTensor
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
@@ -24,16 +23,14 @@ import matplotlib.pyplot as plt
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
-class StatusEnum(enum.Enum):
-    small = 1
-    tall = 2
-    fireball = 3
-
+use_cuda = torch.cuda.is_available()
+FloatTensor = torch.cuda.FloatTensor if use_cuda else torch.FloatTensor
+LongTensor = torch.cuda.LongTensor if use_cuda else torch.LongTensor
+BoolTensor = torch.cuda.ByteTensor if use_cuda else torch.BoolTensor
 
 class Transition(NamedTuple):
     currStates: FloatTensor
-    actions: LongTensor
+    actions: int
     rewards: FloatTensor
     nextStates: FloatTensor
     dones: BoolTensor
@@ -47,22 +44,18 @@ class Transition(NamedTuple):
         model.add(keras.layers.Dense(self.env.action_space.n,activation='linear'))
 '''
 
-
 class DQN(nn.Module):
   def __init__(self, n_input, n_output):
       super(DQN, self).__init__()
 
-      self.hidden_layer_1 = nn.Linear(n_input, 24, bias=False)
-      nn.init.kaiming_uniform_(self.hidden_layer_1.weight, nonlinearity='relu')
-      self.hidden_layer_2 = nn.Linear(24, 48, bias=False)
-      nn.init.kaiming_uniform_(self.hidden_layer_2.weight, nonlinearity='relu')
-      self.output_layer = nn.Linear(48, n_output, bias=False)
+      self.hidden_layer_1 = nn.Linear(n_input, 100)
+      self.hidden_layer_2 = nn.Linear(12, 24)
+      self.output_layer = nn.Linear(100, n_output)
 
   def forward(self, x):
       out = F.relu(self.hidden_layer_1(x))
-      out = F.relu(self.hidden_layer_2(out))
       out = self.output_layer(out)
-      return F.softmax(out, dim=1)
+      return out
 
 class DQNAgent:
     def __init__(self, stateShape, actionSpace, numPicks, memorySize):
@@ -75,10 +68,10 @@ class DQNAgent:
         self.step = 0
 
         self.sync = 1
-        self.alpha = 0.0001
+        self.alpha = 1e-3
         self.epsilon = 1
-        self.epsilon_decay = 0.05
-        self.epsilon_min=0.001
+        self.epsilon_decay = 0.02
+        self.epsilon_min=0.01
         self.gamma = 0.99
 
         self.trainNetwork = DQN(2, actionSpace.n).to(device)
@@ -99,30 +92,23 @@ class DQNAgent:
             return 1
         
         samples = random.sample(self.replayMemory, self.numPicks)
-        batch = Transition(*zip(*samples))
+        batch = zip(*samples)
         currState,action,reward,nextState,done = batch
 
-        reward = torch.flatten(FloatTensor(reward)).to(device)
-        done = torch.flatten(BoolTensor(done)).to(device)
-
+        reward = torch.cat(reward).to(device)
+        done = torch.cat(done).to(device)
         currState = torch.cat(currState).to(device)
+        nextState = torch.cat(nextState).to(device)
         action = torch.cat(action).to(device)
 
-        Q_current = self.trainNetwork(currState).squeeze(1).gather(1, action.unsqueeze(1))
-        
-        nextStateNonFinal = torch.cat([s for s in nextState
-                                                if s is not None])
-        nonFinalMask = torch.tensor(tuple(map(lambda s: s is not None,
-                                          nextState)), dtype=torch.bool).to(device)
+        Q_current = self.trainNetwork(currState).gather(1, action).squeeze(1)
+        Q_futures = self.targetNetwork(nextState).detach().max(1)[0]
 
-        Q_futures = torch.zeros(self.numPicks, device=device)
-        Q_futures[nonFinalMask] = self.targetNetwork(nextStateNonFinal).max(1)[0]
+        Q_next = ((reward*done) + (reward + Q_futures * self.gamma)*~done).to(device)
 
-        Q_next = (reward + Q_futures * self.gamma).unsqueeze(1).to(device)
+        loss = F.mse_loss(Q_current, Q_next)
 
         self.optimizer.zero_grad()
-        loss_fn = nn.MSELoss()
-        loss = loss_fn(Q_current, Q_next)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(self.trainNetwork.parameters(), 1)
         self.optimizer.step()
@@ -133,7 +119,7 @@ class DQNAgent:
       self.step += 1
       
       q = -100000
-      if np.random.rand(1) < self.epsilon:
+      if np.random.rand(1) < 0:
           action = self.actionSpace.sample()
       else:
           currState = currState.to(device)
@@ -143,20 +129,20 @@ class DQNAgent:
               action = np.argmax(preds)
               q = preds[action]
               self.trainNetwork.train()
-      return action, q
+      return LongTensor([[action]]), q
 
-    def addMemory(self, memory, loss):
+    def addMemory(self, memory):
         self.replayMemory.append(memory)
 
     def save(self):
         save_path = (
-            f"./mountain_car_{int(self.step)}.chkpt"
+            f"./mountain_car_openai_torch_{int(self.step)}.chkpt"
         )
         torch.save(
             dict(model=self.trainNetwork.state_dict(), epsilon=self.epsilon),
             save_path,
         )
-        print(f"MarioNet saved to {save_path} done!")
+        print(f"mountain_car saved to {save_path} done!")
 
 episode_score = []
 episode_qs = []
@@ -195,7 +181,7 @@ def plot_episode():
 
 env = gym.make('MountainCar-v0')
 agent = DQNAgent(stateShape=env.observation_space.shape[0],
-                   actionSpace=env.action_space, numPicks=32, memorySize=10000)
+                   actionSpace=env.action_space, numPicks=256, memorySize=8000)
 
 def episode():
     done = False
@@ -214,7 +200,7 @@ def episode():
             qSum += q
             qActions += 1
 
-        obs, reward, done, _ = env.step(action)
+        obs, reward, done, _ = env.step(action.numpy()[0, 0])
 
         maxHeight = max(obs[0], maxHeight)
         if obs[0] >= 0.5:
@@ -222,12 +208,7 @@ def episode():
 
         env.render()
 
-        if not done:
-            nextState = FloatTensor([obs]).to(device)
-        else:
-            nextState = None
-
-        actionT = LongTensor([action]).to(device)
+        nextState = FloatTensor([obs]).to(device)
         rewardT =FloatTensor([reward]).to(device)
         doneT = BoolTensor([done]).to(device)
 
@@ -235,7 +216,7 @@ def episode():
 
         loss = agent.trainDQN()
         lossSum += loss
-        agent.addMemory((stateT, actionT, rewardT, nextState, doneT), loss)
+        agent.addMemory((stateT, action, rewardT, nextState, doneT))
         stateT = nextState
 
     episode_score.append(rewardsSum)
@@ -251,7 +232,7 @@ def episode():
     if ep % agent.sync == 0:
             agent.epsilon = max(agent.epsilon_min, agent.epsilon - agent.epsilon_decay)
 
-    if ep % 150 == 0:
+    if rewardsSum != -200 and ep > 300:
         agent.save()
 
     print("now epsilon is {}, the reward is {} with loss {} in episode {}".format(agent.epsilon, rewardsSum, lossSum, ep)) 

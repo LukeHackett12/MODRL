@@ -4,29 +4,15 @@
 import matplotlib.pyplot as plt
 import matplotlib
 import numpy as np
-import keyboard
 from typing import NamedTuple
-from collections import namedtuple, deque
+from collections import deque
 import random
-import enum
-from PIL import Image
-from torchvision import transforms as T
-import torch
-from dqn_utils.dqn_models import Experience
 from custom_envs.mountain_car.engine import MountainCar
 
 import tensorflow as tf
 from tensorflow import keras, Tensor
 from keras import backend as K
-K.set_image_dim_ordering('th')
 tf.enable_eager_execution()
-
-
-# set up matplotlib
-is_ipython = 'inline' in matplotlib.get_backend()
-if is_ipython:
-    from IPython import display
-
 
 class Transition(NamedTuple):
     currStates: Tensor
@@ -131,7 +117,6 @@ fig, ax = plt.subplots(2, 2)
 fig.canvas.draw()
 plt.show(block=False)
 
-
 def plot_episode():
     ax[0][0].title.set_text('Training Score')
     ax[0][0].set_xlabel('Episode')
@@ -155,22 +140,6 @@ def plot_episode():
     fig.canvas.draw()
     plt.show(block=False)
     plt.pause(.001)
-
-
-resize = T.Compose([T.ToPILImage(),
-                    T.Resize((40, 40), interpolation=Image.CUBIC),
-                    T.ToTensor()])
-
-
-def process_screen(observation):
-    # Returned screen requested by gym is 400x600x3, but is sometimes larger
-    # such as 800x1200x3. Transpose it into torch order (CHW).
-    screen = observation
-    screen = np.ascontiguousarray(screen, dtype=np.float32) / 255
-    screen = torch.from_numpy(screen)
-    # Resize, and add a batch dimension (BCHW)
-    return resize(screen).numpy().transpose((2, 1, 0))
-
 
 env = MountainCar(speed=1e8, graphical_state=False, render=False, is_debug=True, random_starts=True)
 agent = DQNAgent(stateShape=(2,), actionSpace=env.get_action_space(), numPicks=32, memorySize=10000)

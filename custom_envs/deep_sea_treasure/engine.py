@@ -460,7 +460,7 @@ class DeepSeaTreasure(object):
             pygame.pixelcopy.surface_to_array(self.current_buffer, self.screen)
             return self.current_buffer
         else:
-            return self.agent_col * self.num_of_rows + self.agent_row
+            return [self.agent_col, self.agent_row]
 
     def is_terminal(self):
         # print(self.total_steps, self.max_steps)

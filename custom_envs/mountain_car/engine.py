@@ -430,7 +430,6 @@ class MountainCar(object):
         return self.get_state()
 
     def step(self, action):
-
         if action == MountainCarConstants.LEFT_ACTION:
             self.rewards_2.append(-1)
             self.total_score_2 = self.total_score_2 - 1

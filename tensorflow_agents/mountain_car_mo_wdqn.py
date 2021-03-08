@@ -279,11 +279,15 @@ class MultiObjectiveWMountainCar(object):
         self.ax[0][1].title.set_text('Height')
         self.ax[0][1].plot(self.episode_height, 'g')
 
-        self.ax[0][2].title.set_text('Loss')
-        self.ax[0][2].plot(self.episode_loss, 'r')
-
         policies = np.transpose(self.episode_policies)
         colors = pl.cm.jet(np.linspace(0, 1, len(policies)))
+
+        self.ax[0][2].clear()
+        self.ax[0][2].title.set_text('Loss')
+        losses = np.transpose(self.episode_loss)
+        for i, loss in enumerate(losses):
+            self.ax[0][2].plot(loss, color=colors[i], label=i)
+        self.ax[0][2].legend()
 
         self.ax[1][0].clear()
         self.ax[1][0].title.set_text('Policy Choices')

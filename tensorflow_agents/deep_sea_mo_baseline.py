@@ -111,9 +111,6 @@ class DQNAgent(object):
         save_path = (
             f"./deep_sea_treasure_tfngmo_{int(self.step)}.chkpt"
         )
-        self.trainNetwork.save(
-            save_path
-        )
         print(f"DSTNet saved to {save_path} done!")
 
 
@@ -131,7 +128,7 @@ class DeepSeaTreasureBaseline(object):
         self.fig.canvas.draw()
         plt.show(block=False)
 
-        self.env = DeepSeaTreasure(width=5, speed=1e8, graphical_state=False, render=False, is_debug=True)
+        self.env = DeepSeaTreasure(width=5, speed=1e8, graphical_state=False, render=True, is_debug=True)
         self.agent = DQNAgent(stateShape=(
             2,), actionSpace=self.env.get_action_space(), numPicks=32, memorySize=10000)
 
@@ -162,12 +159,13 @@ class DeepSeaTreasureBaseline(object):
             obs, reward, done, _ = self.env.step_all(action)
             # env.render()
 
+            '''
             reward = reward[0]
 
             maxHeight = max(obs[0], maxHeight)
             if obs[0] >= 0.5:
                 reward += 10
-
+            '''
             nextState = obs.reshape(1, 2)
             rewardsSum = np.add(rewardsSum, reward)
 

@@ -9,7 +9,8 @@
       "type": "python",
       "request": "launch",
       "program": "agentRunner.py",
-      "console": "integratedTerminal"
+      "console": "integratedTerminal",
+      "args": ["--agent", "${fileBasenameNoExtension}"]
     },
     {
       "name": "Python: Current File",

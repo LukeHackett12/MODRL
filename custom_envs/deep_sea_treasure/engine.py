@@ -6,6 +6,7 @@ import pygame
 import os
 import sys
 
+
 class DeepSeaTreasureConstants:
     LINEAR = 0
     CONCAVE = 1
@@ -266,8 +267,7 @@ class DeepSeaTreasure(object):
         # Init Pygame engine
         pygame.init()
 
-        self.font = pygame.font.Font(self.current_path + "/../../common/fonts/font.ttf", 12)
-
+        self.font = pygame.font.Font(self.current_path + "/font.ttf", 12)
         if self.rd:
             pygame.display.set_caption(DeepSeaTreasure.get_game_name())
             self.screen = pygame.display.set_mode((self.width, self.height))
@@ -302,7 +302,7 @@ class DeepSeaTreasure(object):
             for col in range(self.num_of_cols):
                 if row <= self.depths[col]:
                     pygame.draw.rect(self.screen, color_blue,
-                                     pygame.Rect(col * self.tile_width , row * self.tile_width,
+                                     pygame.Rect(col * self.tile_width, row * self.tile_width,
                                                  self.tile_width - 1, self.tile_width - 1))
                     if row == self.depths[col]:
                         self.trs[col] = TreasureSprite(pos_x=col * self.tile_width + offset,
@@ -424,6 +424,7 @@ class DeepSeaTreasure(object):
         self.__render()
 
         self.total_score_2 = self.total_score = 0
+        return self.get_state()
 
     def step(self, action):
 
@@ -460,7 +461,7 @@ class DeepSeaTreasure(object):
             pygame.pixelcopy.surface_to_array(self.current_buffer, self.screen)
             return self.current_buffer
         else:
-            return [self.agent_col, self.agent_row]
+            return np.array([self.agent_col, self.agent_row])
 
     def is_terminal(self):
         # print(self.total_steps, self.max_steps)

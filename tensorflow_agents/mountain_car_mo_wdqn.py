@@ -1,3 +1,4 @@
+from os import times
 import matplotlib.pyplot as plt
 import matplotlib
 import matplotlib.pylab as pl
@@ -8,6 +9,7 @@ from collections import deque
 import random
 import sys
 from copy import deepcopy
+from enum import Enum
 
 from numpy.core.numeric import NaN
 from tensorflow.python.ops.gen_array_ops import shape
@@ -104,12 +106,12 @@ class DQNAgent(object):
             reward = np.array(reward).reshape(self.numPicks,).astype(float)
             # Q-Learning
             Q_currents[np.arange(self.numPicks), actions] = reward * dones + (reward + Q_futures * self.gamma)*notDones
-            lossQ = self.train_network.train_on_batch(currStates,Q_currents)
+            lossQ = self.train_network.train_on_batch(currStates, Q_currents)
             self.policy_train_weights[i] = deepcopy(self.train_network.get_weights())
 
             lossW = 0
 
-            #Leave in exploration actions for now, can remove with "policy[p] != -1"
+            # Leave in exploration actions for now, can remove with "policy[p] != -1"
             inverted_policy_mask = np.array([p for p in range(self.numPicks) if policies[p] != i])
             if len(inverted_policy_mask) > 0:
                 # W-Learning
@@ -126,10 +128,11 @@ class DQNAgent(object):
                 w_targets = self.w_network(currStatesNP, training=False).numpy()
 
                 # maybe (Q_currents_not_policy - ((rewardNP * dones) + (self.gamma * Q_futures_not_policy) * notDonesNP)) * walpha^delay ?
-                w_targets[np.arange(len(inverted_policy_mask)), policiesNP] = ((1-self.walpha) * w_targets[np.arange(len(inverted_policy_mask)), policiesNP]) + ((self.walpha**self.delay) * (Q_currents_np - ((rewardNP * donesNP) + (self.gamma * Q_futures_np) * notDonesNP)))
+                w_targets[np.arange(len(inverted_policy_mask)), policiesNP] = ((1-self.walpha) * w_targets[np.arange(len(inverted_policy_mask)), policiesNP]) + \
+                    ((self.walpha**self.delay) * (Q_currents_np - ((rewardNP * donesNP) + (self.gamma * Q_futures_np) * notDonesNP)))
                 lossW = self.w_network.train_on_batch(currStatesNP, w_targets)
                 self.wnet_weights[i] = self.w_network.get_weights()
-            
+
             agentsLoss.append((lossQ, lossW))
 
         return agentsLoss
@@ -141,7 +144,8 @@ class DQNAgent(object):
             self.policy_target_weights = deepcopy(self.policy_train_weights)
             self.epsilon = max(self.epsilon-self.epsilon_decay, self.epsilon_min)
 
-        policy, w, q = (-1,0,0)
+        emptyPolicies = [0] * self.numRewards
+        policy, qs, ws = (-1, emptyPolicies, emptyPolicies)
         random = True
         if np.random.rand(1) < self.epsilon:
             action = np.random.randint(0, 3)
@@ -164,11 +168,10 @@ class DQNAgent(object):
 
             policy = np.argmax(ws)
             action = actions[policy]
-            q = preds[policy][action]
-            w = ws[policy]
+            qs = preds[policy]
             random = False
 
-        return action, policy, q, w, random
+        return action, policy, qs, ws, random
 
     def addMemory(self, memory):
         self.replayMemory.append(memory)
@@ -192,7 +195,7 @@ class MultiObjectiveWMountainCar(object):
         self.episode_ws = []
         self.episode_policies = []
 
-        self.fig, self.ax = plt.subplots(3, 2)
+        self.fig, self.ax = plt.subplots(2, 3)
         self.fig.tight_layout()
         self.fig.canvas.draw()
         plt.show(block=False)
@@ -215,22 +218,24 @@ class MultiObjectiveWMountainCar(object):
         done = False
         rewardsSum = 0
         lossSum = 0
-        policies = [0] * (self.numRewards+1)
+        policies = [0] * (self.numRewards)
 
-        qSum = 0
-        wSum = 0
+        qSums = [0] * (self.numRewards)
+        wSums = [0] * (self.numRewards)
         actions = 1
 
         state = self.env.reset().reshape(1, 2)
         maxHeight = -1
 
         while not done:
-            action, policy, q, w, random = self.agent.selectAction(state)
-            policies[policy] += 1
+            action, policy, qs, ws, random = self.agent.selectAction(state)
             if not random:
-                qSum += q
-                wSum += w
+                policies[policy] += 1
+                qSums = [qSums[i] + qs[i] for i in range(len(policies))]
+                wSums = [wSums[i] + ws[i] for i in range(len(policies))]
                 actions += 1
+
+            #print("{} action taken by {} policy, q-val: {}, w-val: {}".format(Action(action).name, Policy(policy).name,q,w))
 
             obs, reward, done, total_score = self.env.step_all(action)
 
@@ -253,19 +258,19 @@ class MultiObjectiveWMountainCar(object):
             self.agent.epsilon, rewardsSum, lossSum, self.current_episode))
 
         self.episode_score.append(rewardsSum)
-        self.episode_qs.append(qSum/actions)
         self.episode_height.append(maxHeight)
         self.episode_loss.append(lossSum)
         self.episode_policies.append(policies)
-        self.episode_ws.append(wSum/actions)
+        self.episode_qs.append([qSum/actions for qSum in qSums])
+        self.episode_ws.append([wSum/actions for wSum in wSums])
         self.plot()
 
-        print("Report: \nrewardSum:{}\nqAverage:{}\nheight:{}\nloss:{}\npolicies:{}\ndones:{}".format(self.episode_score[-1],
-                                                                                                      self.episode_qs[-1],
-                                                                                                      self.episode_height[-1],
-                                                                                                      self.episode_loss[-1],
-                                                                                                      self.episode_policies[-1],
-                                                                                                      self.episode_ws[-1]))
+        print("Report: \nrewardSum:{}\nheight:{}\nloss:{}\npolicies:{}\nqAverage:{}\nws:{}".format(self.episode_score[-1],
+                                                                                                  self.episode_height[-1],
+                                                                                                  self.episode_loss[-1],
+                                                                                                  self.episode_policies[-1],
+                                                                                                  self.episode_qs[-1],
+                                                                                                  self.episode_ws[-1]))
 
     def plot(self):
         self.ax[0][0].title.set_text('Score')
@@ -274,22 +279,32 @@ class MultiObjectiveWMountainCar(object):
         self.ax[0][1].title.set_text('Height')
         self.ax[0][1].plot(self.episode_height, 'g')
 
-        self.ax[1][0].title.set_text('Loss')
-        self.ax[1][0].plot(self.episode_loss, 'r')
+        self.ax[0][2].title.set_text('Loss')
+        self.ax[0][2].plot(self.episode_loss, 'r')
 
-        self.ax[1][1].title.set_text('Q-Val')
-        self.ax[1][1].plot(self.episode_qs, 'c')
-
-        self.ax[2][0].clear()
-        self.ax[2][0].title.set_text('Policy Choices')
         policies = np.transpose(self.episode_policies)
-        colors = pl.cm.jet(np.linspace(0,1,len(policies)))
-        for i,policy in enumerate(policies):
-            self.ax[2][0].plot(policy, color=colors[i], label=i)
-        self.ax[2][0].legend()
+        colors = pl.cm.jet(np.linspace(0, 1, len(policies)))
 
-        self.ax[2][1].title.set_text('W-Val')
-        self.ax[2][1].plot(self.episode_ws, 'm')
+        self.ax[1][0].clear()
+        self.ax[1][0].title.set_text('Policy Choices')
+        for i, policy in enumerate(policies):
+            self.ax[1][0].plot(policy, color=colors[i], label=i)
+        self.ax[1][0].legend()
+
+        self.ax[1][1].clear()
+        self.ax[1][1].title.set_text('Q-Val')
+        qs = np.transpose(self.episode_qs)
+        for i, q in enumerate(qs):
+            self.ax[1][1].plot(q, color=colors[i], label=i)
+        self.ax[1][1].legend()
+
+        self.ax[1][2].clear()
+        self.ax[1][2].title.set_text('W-Val')
+        ws = np.transpose(self.episode_ws)
+        for i, w in enumerate(ws):
+            self.ax[1][2].plot(w, color=colors[i], label=i)
+        self.ax[1][2].legend()
+
         self.fig.canvas.draw()
         plt.show(block=False)
         plt.pause(.001)

@@ -2,13 +2,21 @@ import argparse
 
 
 from tensorflow_agents.mountain_car_model_tester import MountainCarModelTester
-from tensorflow_agents.mountain_car_mo_baseline import MultiObjectiveMountainCar
-from tensorflow_agents.mountain_car_mo_wdqn import MultiObjectiveWMountainCar
-from tensorflow_agents.mountain_car_mog import MultiObjectiveMountainCarGraphical
+from tensorflow_agents.mountain_car_mo_dqn import MultiObjectiveMountainCarDQN
+from tensorflow_agents.mountain_car_mo_ddqn import MultiObjectiveMountainCarDDQN
+from tensorflow_agents.mountain_car_mo_pddqn import MultiObjectiveMountainCarPDDQN
+from tensorflow_agents.mountain_car_mo_wpddqn import MultiObjectiveWMountainCar
+from tensorflow_agents.mountain_car_graphical_ddqn import MountainCarGraphicalDDQN
 from tensorflow_agents.mountain_car_open_ai import OpenAIMountainCar
-'''
-from tensorflow_agents.deep_sea_mo_baseline import DeepSeaTreasureBaseline
-'''
+
+from tensorflow_agents.deep_sea_baseline_dqn import DeepSeaTreasureBaselineDQN
+from tensorflow_agents.deep_sea_baseline_ddqn import DeepSeaTreasureBaselineDDQN
+from tensorflow_agents.deep_sea_graphical_pddqn import DeepSeaTreasureGraphicalPDDQN
+from tensorflow_agents.deep_sea_graphical_ddqn import DeepSeaTreasureGraphicalDDQN
+from tensorflow_agents.deep_sea_graphical_dqn import DeepSeaTreasureGraphicalDQN
+from tensorflow_agents.deep_sea_mo_wdqn import DeepSeaWAgent
+from tensorflow_agents.deep_sea_graphical_wdqn import DeepSeaGraphicalWAgent
+
 from tensorflow_agents.mario_baseline import MarioBaseline
 
 parser = argparse.ArgumentParser(description='Run agentArg model for game')
@@ -17,16 +25,32 @@ parser.add_argument("-a", "--agentArg", required=True)
 args = parser.parse_args()
 agentArg = args.agentArg
 
-if agentArg == 'mountain_car_mo_baseline':
-  agent = MultiObjectiveMountainCar(2000)
+if agentArg == 'mountain_car_mo_dqn':
+  agent = MultiObjectiveMountainCarDQN(1001)
+elif agentArg == 'mountain_car_mo_ddqn':
+  agent = MultiObjectiveMountainCarDDQN(1001)
+elif agentArg == 'mountain_car_mo_pddqn':
+  agent = MultiObjectiveMountainCarPDDQN(1001)
 elif agentArg == 'mountain_car_mo_wdqn':
   agent = MultiObjectiveWMountainCar(2000)
-elif agentArg == 'mountain_car_mog':
-  agent = MultiObjectiveMountainCarGraphical(2000)
+elif agentArg == 'mountain_car_graphical_ddqn':
+  agent = MountainCarGraphicalDDQN(2500)
 elif agentArg == 'mountain_car_open_ai':
   agent = OpenAIMountainCar(2000)
-elif agentArg == 'deep_sea_mo_baseline':
-  agent = DeepSeaTreasureBaseline(2000)
+elif agentArg == 'deep_sea_baseline_ddqn':
+  agent = DeepSeaTreasureBaselineDDQN(350)
+elif agentArg == 'deep_sea_graphical_pddqn':
+  agent = DeepSeaTreasureGraphicalPDDQN(2000)
+elif agentArg == 'deep_sea_baseline_dqn':
+  agent = DeepSeaTreasureBaselineDQN(350)
+elif agentArg == 'deep_sea_mo_wdqn':
+  agent = DeepSeaWAgent(2000)
+elif agentArg == 'deep_sea_graphical_ddqn':
+  agent = DeepSeaTreasureGraphicalDDQN(2000)
+elif agentArg == 'deep_sea_graphical_dqn':
+  agent = DeepSeaTreasureGraphicalDQN(2000)
+elif agentArg == 'deep_sea_graphical_wdqn':
+  agent = DeepSeaGraphicalWAgent(2000)
 elif agentArg == 'mario_baseline':
   agent = MarioBaseline(2000)
 

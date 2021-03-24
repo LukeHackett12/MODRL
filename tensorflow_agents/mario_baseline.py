@@ -12,6 +12,8 @@ import numpy as np
 from typing import NamedTuple
 from collections import namedtuple, deque
 import random
+import datetime
+import time
 
 import tensorflow as tf
 from tensorflow import keras, Tensor
@@ -25,7 +27,7 @@ class Transition(NamedTuple):
 
 
 class DQNAgent:
-    def __init__(self, stateShape, actionSpace, numPicks, memorySize, sync=100000, burnin=10000, alpha=0.0001, epsilon=1, epsilon_decay=0.99999975, epsilon_min=0.01, gamma=0.9):
+    def __init__(self, stateShape, actionSpace, numPicks, memorySize, sync=100000, burnin=100, alpha=0.0001, epsilon=1, epsilon_decay=0.99999975, epsilon_min=0.01, gamma=0.9):
         self.numPicks = numPicks
         self.replayMemory = deque(maxlen=memorySize)
         self.stateShape = stateShape
@@ -51,7 +53,8 @@ class DQNAgent:
     def createNetwork(self, n_input, n_output, learningRate):
         model = keras.models.Sequential()
 
-        model.add(keras.layers.Conv2D(32, kernel_size=8, strides=4, activation='relu', input_shape=n_input))
+        model.add(keras.layers.experimental.preprocessing.Rescaling(1./255, input_shape=n_input))
+        model.add(keras.layers.Conv2D(32, kernel_size=8, strides=4, activation='relu'))
         model.add(keras.layers.Conv2D(64, kernel_size=4, strides=2, activation='relu'))
         model.add(keras.layers.Conv2D(64, kernel_size=3, strides=1, activation='relu'))
         model.add(keras.layers.Flatten())
@@ -59,6 +62,7 @@ class DQNAgent:
         model.add(keras.layers.Dense(n_output, activation='linear'))
 
         model.compile(loss=keras.losses.Huber(), optimizer=keras.optimizers.Adam(lr=learningRate))
+        print(model.summary())
         return model
 
     def trainDQN(self):
@@ -70,23 +74,21 @@ class DQNAgent:
         currStates, actions, rewards, nextStates, _ = batch
 
         currStates = np.squeeze(np.array(currStates))
-        Q_currents = self.trainNetwork.predict(currStates)
+        Q_currents = self.trainNetwork(currStates, training=False).numpy()
 
         nextStates = np.squeeze(np.array(nextStates))
-        Q_futures = self.targetNetwork.predict(nextStates).max(axis=1)
+        Q_futures = self.targetNetwork(nextStates, training=False).numpy().max(axis=1)
 
         rewards = np.array(rewards).reshape(self.numPicks,).astype(float)
         actions = np.array(actions).reshape(self.numPicks,).astype(int)
 
         Q_currents[np.arange(self.numPicks), actions] = rewards + Q_futures * self.gamma
+        hist = self.trainNetwork.train_on_batch(currStates, Q_currents)
 
-        hist = self.trainNetwork.fit(tf.convert_to_tensor(
-            value=currStates), tf.convert_to_tensor(value=Q_currents), epochs=1, verbose=0)
         return hist.history['loss'][0]
 
     def selectAction(self, state):
         self.step += 1
-        self.epsilon = max(self.epsilon*self.epsilon_decay, self.epsilon_min)
 
         if self.step % self.sync == 0:
             self.targetNetwork.set_weights(self.trainNetwork.get_weights())

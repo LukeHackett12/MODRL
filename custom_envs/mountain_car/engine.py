@@ -3,6 +3,9 @@ import pygame
 import os
 import sys
 import collections as cl
+from collections import deque
+import cv2
+from gym.wrappers.frame_stack import FrameStack, LazyFrames
 from custom_envs.utils import Utils
 from custom_envs.mountain_car.sprites import GoalSprite, CarSprite
 from custom_envs.mountain_car.constants import MountainCarConstants
@@ -13,7 +16,7 @@ class MountainCar(object):
                  gravity_factor=-0.0025, hill_peak_freq=3.0, default_init_pos=-0.5, default_init_vel=0.0,
                  reward_per_step=-1, reward_at_goal=0, random_starts=False, transition_noise=0., seed=None,
                  render=True, speed=60, is_debug=False, frame_skip=1, friction=0, graphical_state=False,
-                 discrete_states=6, episode_limit=200):
+                 discrete_states=6, episode_limit=200, frame_stack=4, screen_width=84, screen_height=84):
         self.vel = default_init_vel
         self.pos = default_init_pos
         self.min_pos = min_pos
@@ -33,6 +36,11 @@ class MountainCar(object):
         self.last_action = 0
         self.rd = render
         self.speed = speed
+
+        self.frame_stack = frame_stack
+        self.screen_width = screen_width
+        self.screen_height = screen_height
+        self.frames = deque(maxlen=self.frame_stack)
 
         self.num_of_actions = 3
         self.num_of_objs = 3
@@ -427,7 +435,10 @@ class MountainCar(object):
         self.total_score_3 = 0
         self.step_count = 0
         self.__render()
-        return self.get_state()
+
+        for _ in range(self.frame_stack):
+            self.frames.append(self.get_state())
+        return LazyFrames(list(self.frames), False)
 
     def step(self, action):
         if action == MountainCarConstants.LEFT_ACTION:
@@ -454,11 +465,25 @@ class MountainCar(object):
         self.__render(is_agent)
 
     def step_all(self, action):
-        r = self.step(action)
-        next_state = self.get_state()
-        terminal = self.is_terminal()
-        self.step_count += 1
-        return next_state, r, terminal, self.total_score
+        if self.graphical_state:
+            terminal = False
+            rewards = self.step(action)
+            self.frames.append(self.get_state())
+            terminal = self.is_terminal()
+            self.step_count += 1
+            return LazyFrames(list(self.frames), False), rewards, terminal, self.pos
+        else:
+            r = self.step(action)
+            next_state = self.get_state()
+            terminal = self.is_terminal()
+            self.step_count += 1
+            return next_state, r, terminal, self.car_height
+
+
+    def process_state(self, state, size):
+        state = cv2.resize(state.astype('float32'), size, interpolation=cv2.INTER_AREA)
+        state = cv2.cvtColor(state, cv2.COLOR_RGB2GRAY)
+        return state
 
     def get_state_space(self):
         if self.graphical_state:
@@ -472,10 +497,10 @@ class MountainCar(object):
         return range(self.num_of_actions)
 
     def get_state(self):
-
         if self.graphical_state:
             pygame.pixelcopy.surface_to_array(self.current_buffer, self.screen)
-            return self.current_buffer
+            frame = self.process_state(self.current_buffer, (self.screen_width, self.screen_height))
+            return frame
         else:
             return np.array([self.pos, self.vel])
 

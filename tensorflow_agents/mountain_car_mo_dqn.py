@@ -1,17 +1,19 @@
 import matplotlib.pyplot as plt
 import matplotlib
 
+from scipy.interpolate import interp1d
 import numpy as np
 from typing import NamedTuple
 from collections import deque
 import random
-from custom_envs.deep_sea_treasure.engine import DeepSeaTreasure
+from custom_envs.mountain_car.engine import MountainCar
 
 import tensorflow as tf
 
 from tensorflow import keras, Tensor
 from keras import backend as K
 
+GROUP_NUM = 10
 
 class Transition(NamedTuple):
     currStates: Tensor
@@ -30,7 +32,6 @@ class DQNAgent(object):
         self.actionSpace = actionSpace
 
         self.step = 0
-        self.sync = 200
 
         self.alpha = 0.001
         self.epsilon = 1
@@ -38,15 +39,10 @@ class DQNAgent(object):
         self.epsilon_min = 0.01
         self.eps_threshold = 0
 
-        self.gamma = 0.99
-        self.tau = 0.01
+        self.gamma = 0.96
 
         self.trainNetwork = self.createNetwork(
             stateShape, len(actionSpace), self.alpha)
-        self.targetNetwork = self.createNetwork(
-            stateShape, len(actionSpace), self.alpha)
-        self.targetNetwork.set_weights(
-            self.trainNetwork.get_weights())
 
     def createNetwork(self, n_input, n_output, learningRate):
         model = keras.models.Sequential()
@@ -71,7 +67,7 @@ class DQNAgent(object):
         Q_currents = self.trainNetwork(currStates, training=False).numpy()
 
         nextStates = np.squeeze(np.array(nextStates), 1)
-        Q_futures = self.targetNetwork(nextStates, training=False).numpy().max(axis=1)
+        Q_futures = self.trainNetwork(nextStates, training=False).numpy().max(axis=1)
 
         rewards = np.array(rewards).reshape(self.numPicks,).astype(float)
         actions = np.array(actions).reshape(self.numPicks,).astype(int)
@@ -88,12 +84,6 @@ class DQNAgent(object):
     def selectAction(self, state):
         self.step += 1
 
-        self.epsilon = max(self.epsilon-self.epsilon_decay, self.epsilon_min)
-
-        if self.step % self.sync == 0:
-            self.targetNetwork.set_weights(
-                self.trainNetwork.get_weights())
-
         q = -100000
         if np.random.rand(1) < self.epsilon:
             action = np.random.randint(0, 3)
@@ -109,12 +99,16 @@ class DQNAgent(object):
 
     def save(self):
         save_path = (
-            f"./deep_sea_treasure_tfngmo_{int(self.step)}.chkpt"
+            f"./mountain_car_tfngmo_{int(self.step)}.chkpt"
         )
-        print(f"DSTNet saved to {save_path} done!")
+        '''
+        self.trainNetwork.save(
+            save_path
+        )'''
+        print(f"MountainNet saved to {save_path} done!")
 
 
-class DeepSeaTreasureBaseline(object):
+class MultiObjectiveMountainCarDQN(object):
     def __init__(self, episodes):
         self.current_episode = 0
         self.episodes = episodes
@@ -124,11 +118,12 @@ class DeepSeaTreasureBaseline(object):
         self.episode_height = []
         self.episode_loss = []
 
-        self.fig, self.ax = plt.subplots(2, 2)
+        self.fig, self.ax = plt.subplots(1, 2, figsize=(10, 4))
         self.fig.canvas.draw()
         plt.show(block=False)
 
-        self.env = DeepSeaTreasure(width=5, speed=1e8, graphical_state=False, render=True, is_debug=True)
+        self.env = MountainCar(speed=1e8, graphical_state=False,
+                               render=False, is_debug=True, random_starts=True)
         self.agent = DQNAgent(stateShape=(
             2,), actionSpace=self.env.get_action_space(), numPicks=32, memorySize=10000)
 
@@ -137,8 +132,7 @@ class DeepSeaTreasureBaseline(object):
             self.episode()
             self.plot()
             self.current_episode += 1
-
-        self.env.close()
+        plt.show(block=True)
 
     def episode(self):
         done = False
@@ -159,13 +153,12 @@ class DeepSeaTreasureBaseline(object):
             obs, reward, done, _ = self.env.step_all(action)
             # env.render()
 
-            '''
             reward = reward[0]
 
             maxHeight = max(obs[0], maxHeight)
             if obs[0] >= 0.5:
                 reward += 10
-            '''
+
             nextState = obs.reshape(1, 2)
             rewardsSum = np.add(rewardsSum, reward)
 
@@ -177,6 +170,7 @@ class DeepSeaTreasureBaseline(object):
         if rewardsSum != -202:
             self.agent.save()
 
+        self.agent.epsilon = max(self.agent.epsilon-self.agent.epsilon_decay, self.agent.epsilon_min)
         print("now epsilon is {}, the reward is {} with loss {} in episode {}".format(
             self.agent.epsilon, rewardsSum, lossSum, self.current_episode))
 
@@ -186,25 +180,45 @@ class DeepSeaTreasureBaseline(object):
         self.episode_loss.append(lossSum)
 
     def plot(self):
-        self.ax[0][0].title.set_text('Training Score')
-        self.ax[0][0].set_xlabel('Episode')
-        self.ax[0][0].set_ylabel('Score')
-        self.ax[0][0].plot(self.episode_score, 'b')
+        spline_x = np.linspace(0, self.current_episode, num=self.current_episode)
+        
+        ep_scores = np.array(self.episode_score)
+        ep_groups = [ep_scores[i * GROUP_NUM:(i + 1) * GROUP_NUM] for i in range((len(ep_scores) + GROUP_NUM - 1) // GROUP_NUM)]
+        #Pad for weird numpy error for now
+        ep_groups[-1] = np.append(ep_groups[-1], [np.mean(ep_groups[-1])] * (GROUP_NUM - len(ep_groups[-1])))
+        x_groups = [i*GROUP_NUM for i in range(len(ep_groups))]
 
-        self.ax[0][1].title.set_text('Training Height')
-        self.ax[0][1].set_xlabel('Episode')
-        self.ax[0][1].set_ylabel('Height')
-        self.ax[0][1].plot(self.episode_height, 'g')
+        self.ax[0].clear()
+        if len(x_groups) > 5:
+            ep_avgs = np.mean(ep_groups, 1)
+            avg_spl = interp1d(x_groups, ep_avgs, kind='cubic', fill_value="extrapolate")
+            ep_std = np.std(ep_groups, 1)
+            std_spl = interp1d(x_groups, ep_std, kind='cubic', fill_value="extrapolate")
+            self.ax[0].plot(spline_x, avg_spl(spline_x),lw=0.7, c="blue")
+            self.ax[0].fill_between(spline_x, avg_spl(spline_x)-std_spl(spline_x), avg_spl(spline_x)+std_spl(spline_x), alpha=0.5, facecolor="red", interpolate=True)
 
-        self.ax[1][0].title.set_text('Training Loss')
-        self.ax[1][0].set_xlabel('Episode')
-        self.ax[1][0].set_ylabel('Loss')
-        self.ax[1][0].plot(self.episode_loss, 'r')
+        self.ax[0].title.set_text('Training Score')
+        self.ax[0].set_xlabel('Episode')
+        self.ax[0].set_ylabel('Score')
+        
+        ep_heights = np.array(self.episode_height)
+        ep_groups = [ep_heights[i * GROUP_NUM:(i + 1) * GROUP_NUM] for i in range((len(ep_heights) + GROUP_NUM - 1) // GROUP_NUM)]
+        #Pad for weird numpy error for now
+        ep_groups[-1] = np.append(ep_groups[-1], [np.mean(ep_groups[-1])] * (GROUP_NUM - len(ep_groups[-1])))
+        x_groups = [i*GROUP_NUM for i in range(len(ep_groups))]
 
-        self.ax[1][1].title.set_text('Training Q Vals')
-        self.ax[1][1].set_xlabel('Episode')
-        self.ax[1][1].set_ylabel('Qs')
-        self.ax[1][1].plot(self.episode_qs, 'c')
-        self.fig.canvas.draw()
+        self.ax[1].clear()
+        if len(x_groups) > 5:
+            ep_avgs = np.mean(ep_groups, 1)
+            avg_spl = interp1d(x_groups, ep_avgs, kind='cubic', fill_value="extrapolate")
+            ep_std = np.std(ep_groups, 1)
+            std_spl = interp1d(x_groups, ep_std, kind='cubic', fill_value="extrapolate")
+            self.ax[1].plot(spline_x, avg_spl(spline_x),lw=0.7, c="blue")
+            self.ax[1].fill_between(spline_x, avg_spl(spline_x)-std_spl(spline_x), avg_spl(spline_x)+std_spl(spline_x), alpha=0.5, facecolor="red", interpolate=True)
+
+        self.ax[1].title.set_text('Training Height')
+        self.ax[1].set_xlabel('Episode')
+        self.ax[1].set_ylabel('Height')
+
         plt.show(block=False)
         plt.pause(.001)

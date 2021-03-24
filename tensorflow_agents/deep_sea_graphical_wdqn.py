@@ -1,7 +1,10 @@
 from os import times
+from tensorflow_agents.deep_sea_baseline_ddqn import GROUP_NUM
 import matplotlib.pyplot as plt
 import matplotlib
 import matplotlib.pylab as pl
+
+import cv2
 
 import numpy as np
 from typing import NamedTuple
@@ -11,14 +14,20 @@ import sys
 from copy import deepcopy
 from enum import Enum
 
+from scipy.interpolate import interp1d
 from numpy.core.numeric import NaN
-from tensorflow.python.ops.gen_array_ops import shape
-from custom_envs.mountain_car.engine import MountainCar
+from custom_envs.deep_sea_treasure.engine import DeepSeaTreasure
 
 import tensorflow as tf
 from tensorflow import keras, Tensor
 from keras import backend as K
 
+GROUP_NUM = 10
+
+class PolEnum(Enum):
+    Score = 0
+    Time = 1
+    Random = 2
 
 class Transition(NamedTuple):
     currStates: Tensor
@@ -30,27 +39,26 @@ class Transition(NamedTuple):
 
 
 class DQNAgent(object):
-    def __init__(self, stateShape, actionSpace, numPicks, memorySize, numRewards):
+    def __init__(self, stateShape, actionSpace, numPicks, memorySize, numRewards, sync=100, burnin=500, alpha=0.00025, epsilon=1, epsilon_decay=0.99975, epsilon_min=0.01, gamma=0.9):
         self.numPicks = numPicks
-        self.memorySize = memorySize
         self.replayMemory = deque(maxlen=memorySize)
         self.stateShape = stateShape
         self.actionSpace = actionSpace
-        self.numRewards = numRewards
 
         self.step = 0
-        self.sync = 200
 
-        self.alpha = 0.001
-        self.walpha = 0.001
+        self.sync = sync
+        self.burnin = burnin
+        self.alpha = alpha
+        self.epsilon = epsilon
+        self.epsilon_decay = epsilon_decay
+        self.epsilon_min = epsilon_min
+        self.gamma = gamma
+
+        self.walpha = 0.01
         self.delay = 1
-        self.epsilon = 1
-        self.epsilon_decay = 0.05
-        self.epsilon_min = 0.01
-        self.eps_threshold = 0
 
-        self.gamma = 0.99
-        self.tau = 0.01
+        self.numRewards = numRewards
 
         self.train_network = self.createNetwork(stateShape, len(actionSpace), self.alpha)
         self.target_network = self.createNetwork(stateShape, len(actionSpace), self.alpha)
@@ -66,10 +74,16 @@ class DQNAgent(object):
     def createNetwork(self, n_input, n_output, learningRate):
         model = keras.models.Sequential()
 
-        model.add(keras.layers.Dense(24, activation='relu', input_shape=n_input))
-        model.add(keras.layers.Dense(48, activation='relu'))
+        model.add(keras.layers.experimental.preprocessing.Rescaling(1./255, input_shape=n_input))
+        model.add(keras.layers.Conv2D(32, kernel_size=8, strides=4, activation='relu'))
+        model.add(keras.layers.Conv2D(64, kernel_size=4, strides=2, activation='relu'))
+        model.add(keras.layers.Conv2D(64, kernel_size=3, strides=1, activation='relu'))
+        model.add(keras.layers.Flatten())
+        model.add(keras.layers.Dense(512, activation='linear'))
         model.add(keras.layers.Dense(n_output, activation='linear'))
-        model.compile(loss='mse', optimizer=keras.optimizers.Adam(lr=learningRate))
+
+        model.compile(loss=keras.losses.Huber(), optimizer=keras.optimizers.Adam(lr=learningRate))
+        print(model.summary())
         return model
 
     def trainDQN(self):
@@ -80,8 +94,8 @@ class DQNAgent(object):
         batch = Transition(*zip(*samples))
         currStates, actions, policies, rewards, nextStates, dones = batch
 
-        currStates = np.squeeze(np.array(currStates), 1)
-        nextStates = np.squeeze(np.array(nextStates), 1)
+        currStates = np.array(currStates)
+        nextStates = np.array(nextStates)
 
         rewards = np.array(rewards).transpose().astype(float)
         actions = np.array(actions).reshape(self.numPicks,).astype(int)
@@ -113,7 +127,7 @@ class DQNAgent(object):
 
             # Leave in exploration actions for now, can remove with "policy[p] != -1"
             inverted_policy_mask = np.array([p for p in range(self.numPicks) if policies[p] != i])
-            if len(inverted_policy_mask) > 0:
+            if len(inverted_policy_mask) > 0 and len(self.replayMemory) > self.burnin:
                 # W-Learning
                 self.w_network.set_weights(self.wnet_weights[i])
                 currStatesNP = currStates[inverted_policy_mask]
@@ -140,36 +154,42 @@ class DQNAgent(object):
     def selectAction(self, state):
         self.step += 1
 
+        self.epsilon = max(self.epsilon*self.epsilon_decay, self.epsilon_min)
         if self.step % self.sync == 0:
             self.policy_target_weights = deepcopy(self.policy_train_weights)
-            self.epsilon = max(self.epsilon-self.epsilon_decay, self.epsilon_min)
 
         emptyPolicies = [0] * self.numRewards
         policy, qs, ws = (-1, emptyPolicies, emptyPolicies)
         random = True
         if np.random.rand(1) < self.epsilon:
-            action = np.random.randint(0, 3)
+            action = np.random.randint(0, len(self.actionSpace))
         else:
             ws = []
             actions = []
             preds = []
+
             for i in range(self.numRewards):
                 self.train_network.set_weights(self.policy_train_weights[i])
 
-                pred = np.squeeze(self.train_network(state, training=False).numpy(), axis=0)
+                pred = np.squeeze(self.train_network(np.expand_dims(state, 0), training=False).numpy(), axis=0)
                 preds.append(pred)
 
                 action = np.argmax(pred)
                 actions.append(action)
 
-                self.w_network.set_weights(self.wnet_weights[i])
-                w_val = self.w_network(state, training=False).numpy()[0]
-                ws.append(w_val[np.argmax(w_val)])
+            if np.random.rand(1) < self.epsilon:
+                policy = np.random.randint(0, self.numRewards)
+            else:
+                for i in range(self.numRewards):
+                    self.w_network.set_weights(self.wnet_weights[i])
+                    w_val = self.w_network(np.expand_dims(state, 0), training=False).numpy()[0]
+                    ws.append(w_val[np.argmax(w_val)])
 
-            policy = np.argmax(ws)
+                random = False
+                policy = np.argmax(ws)
+
             action = actions[policy]
             qs = preds[policy]
-            random = False
 
         return action, policy, qs, ws, random
 
@@ -183,7 +203,7 @@ class DQNAgent(object):
         print(f"MountainNet saved to {save_path} done!")
 
 
-class MultiObjectiveWMountainCar(object):
+class DeepSeaGraphicalWAgent(object):
     def __init__(self, episodes):
         self.current_episode = 0
         self.episodes = episodes
@@ -195,36 +215,34 @@ class MultiObjectiveWMountainCar(object):
         self.episode_ws = []
         self.episode_policies = []
 
-        self.fig, self.ax = plt.subplots(2, 3)
-        self.fig.tight_layout()
+        self.fig, self.ax = plt.subplots(1, 2, figsize=(10, 4))
         self.fig.canvas.draw()
         plt.show(block=False)
 
-        self.numRewards = 3
+        self.numRewards = 2
 
-        self.env = MountainCar(speed=1e8, graphical_state=False,
-                               render=True, is_debug=True, random_starts=True)
-        self.agent = DQNAgent(stateShape=(
-            2,), actionSpace=self.env.get_action_space(), numPicks=32, memorySize=10000, numRewards=self.numRewards)
+        self.env = DeepSeaTreasure(width=5, speed=10000, graphical_state=True, render=True, is_debug=False)
+        self.agent = DQNAgent(stateShape=(64, 64, 1), actionSpace=self.env.get_action_space(), numPicks=32, memorySize=10000, numRewards=self.numRewards)
 
     def train(self):
         for _ in range(self.episodes):
             self.episode()
             self.current_episode += 1
 
+        plt.show(block=True)
         self.env.close()
 
     def episode(self):
         done = False
         rewardsSum = 0
-        lossSum = 0
-        policies = [0] * (self.numRewards)
 
+        lossSums = [0] * (self.numRewards)
+        policies = [0] * (self.numRewards)
         qSums = [0] * (self.numRewards)
         wSums = [0] * (self.numRewards)
         actions = 1
 
-        state = self.env.reset().reshape(1, 2)
+        state = self.process_state(self.env.reset())
         maxHeight = -1
 
         while not done:
@@ -235,79 +253,82 @@ class MultiObjectiveWMountainCar(object):
                 wSums = [wSums[i] + ws[i] for i in range(len(policies))]
                 actions += 1
 
-            #print("{} action taken by {} policy, q-val: {}, w-val: {}".format(Action(action).name, Policy(policy).name,q,w))
+            obs, reward, done, _ = self.env.step_all(action)
 
-            obs, reward, done, total_score = self.env.step_all(action)
-
-            maxHeight = max(obs[0], maxHeight)
-            if obs[0] >= 0.5:
-                reward = [r+10 for r in reward]
-
-            nextState = obs.reshape(1, 2)
+            nextState = state - self.process_state(obs)
             rewardsSum = np.add(rewardsSum, sum(reward))
 
-            loss = self.agent.trainDQN()
             self.agent.addMemory((state, action, policy, reward, nextState, done))
             state = nextState
-            lossSum += loss[0][0]
 
-        if (total_score < 200) and self.current_episode > 150:
-            self.agent.save()
+            loss = self.agent.trainDQN()
+            lossSums = [lossSums[i] + loss[i][0] for i in range(len(policies))]
 
         print("now epsilon is {}, the reward is {} with loss {} in episode {}".format(
-            self.agent.epsilon, rewardsSum, lossSum, self.current_episode))
+            self.agent.epsilon, rewardsSum, lossSums, self.current_episode))
 
         self.episode_score.append(rewardsSum)
         self.episode_height.append(maxHeight)
-        self.episode_loss.append(lossSum)
+        self.episode_loss.append(lossSums)
         self.episode_policies.append(policies)
         self.episode_qs.append([qSum/actions for qSum in qSums])
         self.episode_ws.append([wSum/actions for wSum in wSums])
         self.plot()
 
         print("Report: \nrewardSum:{}\nheight:{}\nloss:{}\npolicies:{}\nqAverage:{}\nws:{}".format(self.episode_score[-1],
-                                                                                                  self.episode_height[-1],
-                                                                                                  self.episode_loss[-1],
-                                                                                                  self.episode_policies[-1],
-                                                                                                  self.episode_qs[-1],
-                                                                                                  self.episode_ws[-1]))
+                                                                                                   self.episode_height[-1],
+                                                                                                   self.episode_loss[-1],
+                                                                                                   self.episode_policies[-1],
+                                                                                                   self.episode_qs[-1],
+                                                                                                   self.episode_ws[-1]))
+
+    def process_state(self, state):
+        state = cv2.resize(state.astype('float32'), (64, 64), interpolation=cv2.INTER_AREA)
+        state = cv2.cvtColor(state, cv2.COLOR_RGB2GRAY)
+        return np.expand_dims(state, 2)
 
     def plot(self):
-        self.ax[0][0].title.set_text('Score')
-        self.ax[0][0].plot(self.episode_score, 'b')
+        spline_x = np.linspace(0, self.current_episode, num=self.current_episode)
 
-        self.ax[0][1].title.set_text('Height')
-        self.ax[0][1].plot(self.episode_height, 'g')
+        ep_scores = np.array(self.episode_score)
+        ep_groups = [ep_scores[i * GROUP_NUM:(i + 1) * GROUP_NUM] for i in range((len(ep_scores) + GROUP_NUM - 1) // GROUP_NUM)]
+        # Pad for weird numpy error for now
+        ep_groups[-1] = np.append(ep_groups[-1], [np.mean(ep_groups[-1])] * (GROUP_NUM - len(ep_groups[-1])))
+        x_groups = [i*GROUP_NUM for i in range(len(ep_groups))]
+
+        self.ax[0].clear()
+        if len(x_groups) > 5:
+            ep_avgs = np.mean(ep_groups, 1)
+            avg_spl = interp1d(x_groups, ep_avgs, kind='cubic', fill_value="extrapolate")
+            ep_std = np.std(ep_groups, 1)
+            std_spl = interp1d(x_groups, ep_std, kind='cubic', fill_value="extrapolate")
+            self.ax[0].plot(spline_x, avg_spl(spline_x), lw=0.7, c="blue")
+            self.ax[0].fill_between(spline_x, avg_spl(spline_x)-std_spl(spline_x), avg_spl(spline_x)+std_spl(spline_x), alpha=0.5, facecolor="red", interpolate=True)
+
+        self.ax[0].title.set_text('Training Score')
+        self.ax[0].set_xlabel('Episode')
+        self.ax[0].set_ylabel('Score')
 
         policies = np.transpose(self.episode_policies)
-        colors = pl.cm.jet(np.linspace(0, 1, len(policies)))
+        colors = pl.cm.jet(np.linspace(0, 1, len(policies)*2))
 
-        self.ax[0][2].clear()
-        self.ax[0][2].title.set_text('Loss')
-        losses = np.transpose(self.episode_loss)
-        for i, loss in enumerate(losses):
-            self.ax[0][2].plot(loss, color=colors[i], label=i)
-        self.ax[0][2].legend()
-
-        self.ax[1][0].clear()
-        self.ax[1][0].title.set_text('Policy Choices')
+        self.ax[1].clear()
+        self.ax[1].title.set_text('Policy Choices')
         for i, policy in enumerate(policies):
-            self.ax[1][0].plot(policy, color=colors[i], label=i)
-        self.ax[1][0].legend()
+            if len(x_groups) > 5:
+                ep_groups = [policy[i * GROUP_NUM:(i + 1) * GROUP_NUM] for i in range((len(policy) + GROUP_NUM - 1) // GROUP_NUM)]
+                # Pad for weird numpy error for now
+                ep_groups[-1] = np.append(ep_groups[-1], [np.mean(ep_groups[-1])] * (GROUP_NUM - len(ep_groups[-1])))
+                x_groups = [i*GROUP_NUM for i in range(len(ep_groups))]
 
-        self.ax[1][1].clear()
-        self.ax[1][1].title.set_text('Q-Val')
-        qs = np.transpose(self.episode_qs)
-        for i, q in enumerate(qs):
-            self.ax[1][1].plot(q, color=colors[i], label=i)
-        self.ax[1][1].legend()
+                ep_avgs = np.mean(ep_groups, 1)
+                avg_spl = interp1d(x_groups, ep_avgs, kind='cubic', fill_value="extrapolate")
+                ep_std = np.std(ep_groups, 1)
+                std_spl = interp1d(x_groups, ep_std, kind='cubic', fill_value="extrapolate")
+                self.ax[1].plot(spline_x, avg_spl(spline_x), lw=0.7, c=colors[i], label="{} policy".format(PolEnum(i).name))
+                self.ax[1].fill_between(spline_x, avg_spl(spline_x)-std_spl(spline_x), avg_spl(spline_x)+std_spl(spline_x), alpha=0.5, facecolor=colors[-1-i], interpolate=True)
 
-        self.ax[1][2].clear()
-        self.ax[1][2].title.set_text('W-Val')
-        ws = np.transpose(self.episode_ws)
-        for i, w in enumerate(ws):
-            self.ax[1][2].plot(w, color=colors[i], label=i)
-        self.ax[1][2].legend()
+        self.ax[1].legend()
 
         self.fig.canvas.draw()
         plt.show(block=False)
@@ -315,5 +336,5 @@ class MultiObjectiveWMountainCar(object):
 
 
 if __name__ == '__main__':
-    agent = MultiObjectiveWMountainCar(1000)
+    agent = DeepSeaGraphicalWAgent(1000)
     agent.train()

@@ -128,7 +128,7 @@ class OpenAIMountainCar(object):
 
         self.fig, self.ax = plt.subplots(2, 2)
         self.fig.canvas.draw()
-        self.plt.show(block=False)
+        plt.show(block=False)
 
         self.env = gym.make('MountainCar-v0')
         self.agent = DQNAgent(stateShape=self.env.observation_space.shape,
@@ -159,9 +159,8 @@ class OpenAIMountainCar(object):
                 qActions += 1
 
             obs, reward, done, _ = self.env.step(action)
-            # env.render()
+            self.env.render()
 
-            reward = reward[0]
 
             maxHeight = max(obs[0], maxHeight)
             if obs[0] >= 0.5:
@@ -175,8 +174,8 @@ class OpenAIMountainCar(object):
             state = nextState
             lossSum += loss
 
-        if rewardsSum != -202:
-            self.agent.save()
+        if rewardsSum != -200:
+            self.agent.save(self.current_episode)
 
         print("now epsilon is {}, the reward is {} with loss {} in episode {}".format(
             self.agent.epsilon, rewardsSum, lossSum, self.current_episode))

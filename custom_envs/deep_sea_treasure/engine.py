@@ -1,3 +1,7 @@
+from collections import deque
+import cv2
+
+from gym.wrappers.frame_stack import LazyFrames
 from custom_envs.deep_sea_treasure.mdp import TransitionList
 from custom_envs.deep_sea_treasure.sprites import SubmarineSprite, TreasureSprite
 from custom_envs.utils import Utils
@@ -23,7 +27,7 @@ class DeepSeaTreasure(object):
     def __init__(self, width, min_depth=3, min_vertical_step=1, max_vertical_step=3, transition_noise=0.,
                  reward_noise=0., front_shape=DeepSeaTreasureConstants.CONCAVE, seed=None, min_treasure=1,
                  max_treasure=1000, render=False, speed=60, agent_random_location=False,
-                 reshape_reward_weights=None, is_debug=False, graphical_state=False):
+                 reshape_reward_weights=None, is_debug=False, graphical_state=False, frame_stack=2, screen_width=84, screen_height=84):
         self.num_of_cols = width
         self.min_depth = min_depth
         self.min_vertical_step = min_vertical_step
@@ -37,6 +41,10 @@ class DeepSeaTreasure(object):
         self.total_steps = 0
         self.weights = reshape_reward_weights
         self.chose_weight = 0
+
+        self.frame_stack = frame_stack
+        self.screen_width = screen_width
+        self.screen_height = screen_height
 
         step_range = max_vertical_step - min_vertical_step + 1
         self.trs = [None for _ in range(width)]
@@ -61,7 +69,7 @@ class DeepSeaTreasure(object):
             self.agent_col = np.random.randint(0, self.num_of_cols - 1)
         for i in range(self.num_of_cols):
             if i > 0:
-                self.depths[i] = self.depths[i - 1] + np.random.randint(step_range - 1) + min_vertical_step
+                self.depths[i] = self.depths[i - 1] + np.random.choice((step_range - 1), 1, p=[0.8, 0.2])[0] + min_vertical_step
                 self.steps[i] = i + self.depths[i]
         self.num_of_rows = self.depths[-1] + 1
         self.front_shape = front_shape
@@ -424,7 +432,8 @@ class DeepSeaTreasure(object):
         self.__render()
 
         self.total_score_2 = self.total_score = 0
-        return self.get_state()
+        frames = [self.process_state(self.get_state(), (self.screen_width, self.screen_height))] * self.frame_stack
+        return LazyFrames(frames, False)
 
     def step(self, action):
 
@@ -438,10 +447,23 @@ class DeepSeaTreasure(object):
         self.__render(is_agent)
 
     def step_all(self, action):
-        rewards = self.step(action)
-        next_state = self.get_state()
-        terminal = self.is_terminal()
-        return next_state, rewards, terminal, 0
+        lz_frames = []
+        terminal = False
+        for _ in range(self.frame_stack):
+            rewards = self.step(action)
+            lz_frames.append(self.process_state(self.get_state(), (self.screen_width, self.screen_height)))
+            terminal = self.is_terminal()
+
+            if terminal:
+                lz_frames.extend([self.process_state(self.get_state(), (self.screen_width, self.screen_height))] * (self.frame_stack-len(lz_frames)))
+                break
+
+        return LazyFrames(lz_frames, False), rewards, terminal, 0
+
+    def process_state(self, state, size):
+        state = cv2.resize(state.astype('float32'), size, interpolation=cv2.INTER_AREA)
+        state = cv2.cvtColor(state, cv2.COLOR_RGB2GRAY)
+        return state
 
     def get_state_space(self):
         if self.graphical_state:

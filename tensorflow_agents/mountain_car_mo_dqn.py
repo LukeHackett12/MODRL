@@ -11,7 +11,6 @@ from custom_envs.mountain_car.engine import MountainCar
 import tensorflow as tf
 
 from tensorflow import keras, Tensor
-from keras import backend as K
 
 GROUP_NUM = 10
 

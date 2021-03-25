@@ -8,6 +8,7 @@ import matplotlib
 import matplotlib.pylab as pl
 
 import numpy as np
+import gc
 from typing import NamedTuple
 from collections import deque
 import random
@@ -40,7 +41,7 @@ class Transition(NamedTuple):
 
 
 class DQNAgent(object):
-    def __init__(self, stateShape, actionSpace, numPicks, memorySize, sync=100, burnin=1000, alpha=0.00025, epsilon=1, epsilon_decay=0.05, epsilon_min=0.01, gamma=0.99):
+    def __init__(self, stateShape, actionSpace, numPicks, memorySize, sync=10, burnin=1000, alpha=0.0001, epsilon=1, epsilon_decay=0.05, epsilon_min=0.01, gamma=0.99):
         self.numPicks = numPicks
         self.replayMemory = PrioritizedReplayBuffer(memorySize, 0.6)
         self.stateShape = stateShape
@@ -85,7 +86,7 @@ class DQNAgent(object):
         if self.step <= self.numPicks or len(self.replayMemory) <= self.burnin:
             return 0
 
-        beta = 0.4 + self.step * (1.0 - 0.4) / 400000
+        beta = 0.4 + self.step * (1.0 - 0.4) / 1000000
         batch = self.replayMemory.sample(self.numPicks, beta)
         currStates, actions, rewards, nextStates, dones, weights, indices = batch
 
@@ -147,7 +148,6 @@ class MountainCarGraphicalDDQN(object):
 
         self.fig, self.ax = plt.subplots(1, 2, figsize=(10, 4))
         self.fig.canvas.draw()
-        plt.show(block=False)
 
         self.env = MountainCar(speed=10000, graphical_state=True, render=False, is_debug=False, frame_stack=4)
         self.agent = DQNAgent(stateShape=(84, 84, 4), actionSpace=self.env.get_action_space(), numPicks=32, memorySize=100000)
@@ -205,12 +205,17 @@ class MountainCarGraphicalDDQN(object):
         self.episode_height.append(maxHeight)
         self.episode_loss.append(lossSum)
         self.episode_qs.append([qSums/actions])
-        self.plot()
+        
+        if self.current_episode % 100 == 0:
+            self.plot()
 
         print("Report: \nrewardSum:{}\nheight:{}\nloss:{}\nqAverage:{}".format(self.episode_score[-1],
                                                                                self.episode_height[-1],
                                                                                self.episode_loss[-1],
                                                                                self.episode_qs[-1]))
+        
+        tf.keras.backend.clear_session()
+        gc.collect()
 
     def plot(self):
         spline_x = np.linspace(0, self.current_episode, num=self.current_episode)
@@ -252,8 +257,7 @@ class MountainCarGraphicalDDQN(object):
             self.ax[1].fill_between(spline_x, avg_spl(spline_x)-std_spl(spline_x), avg_spl(spline_x)+std_spl(spline_x), alpha=0.5, facecolor="red", interpolate=True)
 
         self.fig.canvas.draw()
-        plt.show(block=False)
-        plt.pause(.001)
+        plt.savefig("graphical_momc_perddqn_{}.png".format(self.current_episode))
 
 
 if __name__ == '__main__':

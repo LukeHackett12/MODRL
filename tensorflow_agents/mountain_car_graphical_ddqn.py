@@ -128,39 +128,45 @@ class DQNAgent(object):
     def addMemory(self, state, action, reward, nextState, done):
         self.replayMemory.add(state, action, reward, nextState, done)
 
-    def save(self):
+    def save(self, reward):
         save_path = (
-            f"./mountain_car_wnet_{int(self.step)}.chkpt"
+            f"./mountain_car_net_cheat_{reward}.chkpt"
         )
+        import pickle
+        weights = self.trainNetwork.get_weights()
+
+        with open(save_path, 'wb'):
+            pickle.dump(weights, save_path)
+
         print(f"MountainNet saved to {save_path} done!")
 
 
 class MountainCarGraphicalDDQN(object):
     def __init__(self, episodes):
-        self.current_episode = 0
         self.episodes = episodes
 
-        self.episode_score = []
-        self.episode_qs = []
-        self.episode_height = []
-        self.episode_loss = []
-        self.episode_policies = []
-
-        self.fig, self.ax = plt.subplots(1, 2, figsize=(10, 4))
-        self.fig.canvas.draw()
-
-        self.env = MountainCar(speed=10000, graphical_state=True, render=False, is_debug=False, frame_stack=4)
-        self.agent = DQNAgent(stateShape=(84, 84, 4), actionSpace=self.env.get_action_space(), numPicks=32, memorySize=100000)
-
     def train(self):
-        for _ in range(self.episodes):
-            self.episode()
-            self.current_episode += 1
+        for reward in range(3):
+            self.current_episode = 0
 
-        plt.show(block=True)
-        self.env.close()
+            self.episode_score = []
+            self.episode_qs = []
+            self.episode_height = []
+            self.episode_loss = []
+            self.episode_policies = []
 
-    def episode(self):
+            self.fig, self.ax = plt.subplots(1, 2, figsize=(10, 4))
+            self.fig.canvas.draw()
+
+            self.env = MountainCar(speed=10000, graphical_state=True, render=False, is_debug=False, frame_stack=4)
+            self.agent = DQNAgent(stateShape=(84, 84, 4), actionSpace=self.env.get_action_space(), numPicks=32, memorySize=100000)
+
+            for _ in range(self.episodes):
+                self.episode(reward)
+                self.current_episode += 1
+            self.agent.save(reward)
+
+    def episode(self, r):
         done = False
         rewardsSum = 0
 
@@ -179,15 +185,17 @@ class MountainCarGraphicalDDQN(object):
 
             obs, reward, done, height = self.env.step_all(action)
             maxHeight = max(height, maxHeight)
-            reward[0] += height
+
+            rewardsSum = np.add(rewardsSum, sum(reward))
+
+            reward[r] += height
             if height >= 0.5:
                 for i in range(len(reward)):
                     reward[i] += 10
 
             nextState = obs
-            rewardsSum = np.add(rewardsSum, sum(reward))
 
-            self.agent.addMemory(state, action, reward[0], nextState, done)
+            self.agent.addMemory(state, action, reward[r], nextState, done)
             state = nextState
 
             loss = self.agent.trainDQN()
@@ -207,7 +215,7 @@ class MountainCarGraphicalDDQN(object):
         self.episode_qs.append([qSums/actions])
         
         if self.current_episode % 100 == 0:
-            self.plot()
+            self.plot(r)
 
         print("Report: \nrewardSum:{}\nheight:{}\nloss:{}\nqAverage:{}".format(self.episode_score[-1],
                                                                                self.episode_height[-1],
@@ -217,7 +225,7 @@ class MountainCarGraphicalDDQN(object):
         tf.keras.backend.clear_session()
         gc.collect()
 
-    def plot(self):
+    def plot(self, r):
         spline_x = np.linspace(0, self.current_episode, num=self.current_episode)
 
         ep_scores = np.array(self.episode_score)
@@ -257,9 +265,9 @@ class MountainCarGraphicalDDQN(object):
             self.ax[1].fill_between(spline_x, avg_spl(spline_x)-std_spl(spline_x), avg_spl(spline_x)+std_spl(spline_x), alpha=0.5, facecolor="red", interpolate=True)
 
         self.fig.canvas.draw()
-        plt.savefig("graphical_momc_perddqn_{}.png".format(self.current_episode))
+        plt.savefig("graphical_momc_perddqn_{}_{}.png".format(r, self.current_episode))
 
 
 if __name__ == '__main__':
-    agent = MountainCarGraphicalDDQN(2000)
+    agent = MountainCarGraphicalDDQN(2500)
     agent.train()

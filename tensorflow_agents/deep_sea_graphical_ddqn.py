@@ -40,7 +40,7 @@ class Transition(NamedTuple):
 
 
 class DQNAgent(object):
-    def __init__(self, stateShape, actionSpace, numPicks, memorySize, numRewards, sync=50, burnin=500, alpha=0.0001, epsilon=1, epsilon_decay=0.99975, epsilon_min=0.01, gamma=0.99):
+    def __init__(self, stateShape, actionSpace, numPicks, memorySize, numRewards, sync=50, burnin=500, alpha=0.0001, epsilon=1, epsilon_decay=0.99985, epsilon_min=0.01, gamma=0.99):
         self.numPicks = numPicks
         self.replayMemory = deque(maxlen=memorySize)
         self.stateShape = stateShape

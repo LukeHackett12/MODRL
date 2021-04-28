@@ -31,8 +31,8 @@ elif agentArg == 'mountain_car_mo_ddqn':
   agent = MultiObjectiveMountainCarDDQN(1001)
 elif agentArg == 'mountain_car_mo_pddqn':
   agent = MultiObjectiveMountainCarPDDQN(1001)
-elif agentArg == 'mountain_car_mo_wdqn':
-  agent = MultiObjectiveWMountainCar(2000)
+elif agentArg == 'mountain_car_mo_wpddqn':
+  agent = MultiObjectiveWMountainCar(5000)
 elif agentArg == 'mountain_car_graphical_ddqn':
   agent = MountainCarGraphicalDDQN(5000)
 elif agentArg == 'mountain_car_open_ai':
@@ -40,17 +40,17 @@ elif agentArg == 'mountain_car_open_ai':
 elif agentArg == 'deep_sea_baseline_ddqn':
   agent = DeepSeaTreasureBaselineDDQN(350)
 elif agentArg == 'deep_sea_graphical_pddqn':
-  agent = DeepSeaTreasureGraphicalPDDQN(2000)
+  agent = DeepSeaTreasureGraphicalPDDQN(301)
 elif agentArg == 'deep_sea_baseline_dqn':
-  agent = DeepSeaTreasureBaselineDQN(350)
+  agent = DeepSeaTreasureBaselineDQN(300)
 elif agentArg == 'deep_sea_mo_wdqn':
   agent = DeepSeaWAgent(2000)
 elif agentArg == 'deep_sea_graphical_ddqn':
-  agent = DeepSeaTreasureGraphicalDDQN(2000)
+  agent = DeepSeaTreasureGraphicalDDQN(1501)
 elif agentArg == 'deep_sea_graphical_dqn':
-  agent = DeepSeaTreasureGraphicalDQN(2000)
+  agent = DeepSeaTreasureGraphicalDQN(2001)
 elif agentArg == 'deep_sea_graphical_wpddqn':
-  agent = MultiObjectiveDeepSeaW(3001)
+  agent = MultiObjectiveDeepSeaW(301)
 elif agentArg == 'mario_baseline':
   agent = MarioBaseline(2000)
 

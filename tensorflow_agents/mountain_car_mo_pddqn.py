@@ -123,9 +123,9 @@ class DQNAgent(object):
         save_path = (
             f"./mountain_car_tfngmo_{int(self.step)}.chkpt"
         )
-        '''self.trainNetwork.save(
+        self.trainNetwork.save(
             save_path
-        )'''
+        )
         print(f"MountainNet saved to {save_path} done!")
 
 
@@ -144,7 +144,7 @@ class MultiObjectiveMountainCarPDDQN(object):
         plt.show(block=False)
 
         self.env = MountainCar(speed=1e8, graphical_state=False,
-                               render=True, is_debug=True, random_starts=True)
+                               render=False, is_debug=True, random_starts=True)
         self.agent = DQNAgent(stateShape=(
             2,), actionSpace=self.env.get_action_space(), numPicks=32, memorySize=10000)
 
@@ -176,6 +176,7 @@ class MultiObjectiveMountainCarPDDQN(object):
             # env.render()
 
             reward = reward[0]
+            rewardsSum = np.add(rewardsSum, reward)
 
             maxHeight = max(obs[0], maxHeight)
             if obs[0] >= 0.5:
@@ -183,7 +184,7 @@ class MultiObjectiveMountainCarPDDQN(object):
                 reward += 10
 
             nextState = obs.reshape(1, 2)
-            rewardsSum = np.add(rewardsSum, reward)
+            
 
             loss = self.agent.trainDQN()
             self.agent.addMemory(state, action, reward, nextState, done)

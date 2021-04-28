@@ -436,9 +436,12 @@ class MountainCar(object):
         self.step_count = 0
         self.__render()
 
-        for _ in range(self.frame_stack):
-            self.frames.append(self.get_state())
-        return LazyFrames(list(self.frames), False)
+        if self.graphical_state:
+            for _ in range(self.frame_stack):
+                self.frames.append(self.get_state())
+            return LazyFrames(list(self.frames), False)
+        else:
+            return self.get_state()
 
     def step(self, action):
         if action == MountainCarConstants.LEFT_ACTION:

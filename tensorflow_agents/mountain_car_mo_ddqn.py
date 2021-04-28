@@ -46,6 +46,8 @@ class DQNAgent(object):
 
         self.trainNetwork = self.createNetwork(
             stateShape, len(actionSpace), self.alpha)
+        self.trainNetwork = keras.models.load_model('mountain_car_tfngmo_99572.chkpt')
+        
         self.targetNetwork = self.createNetwork(
             stateShape, len(actionSpace), self.alpha)
         self.targetNetwork.set_weights(
@@ -97,7 +99,7 @@ class DQNAgent(object):
                 self.trainNetwork.get_weights())
 
         q = -100000
-        if np.random.rand(1) < self.epsilon:
+        if np.random.rand(1) < 0:
             action = np.random.randint(0, 3)
         else:
             preds = np.squeeze(self.trainNetwork(
@@ -113,9 +115,9 @@ class DQNAgent(object):
         save_path = (
             f"./mountain_car_tfngmo_{int(self.step)}.chkpt"
         )
-        '''self.trainNetwork.save(
+        self.trainNetwork.save(
             save_path
-        )'''
+        )
         print(f"MountainNet saved to {save_path} done!")
 
 
@@ -133,7 +135,7 @@ class MultiObjectiveMountainCarDDQN(object):
         self.fig.canvas.draw()
         plt.show(block=False)
 
-        self.env = MountainCar(speed=1e8, graphical_state=False,
+        self.env = MountainCar(speed=60, graphical_state=False,
                                render=True, is_debug=True, random_starts=True)
         self.agent = DQNAgent(stateShape=(
             2,), actionSpace=self.env.get_action_space(), numPicks=32, memorySize=10000)
@@ -175,7 +177,7 @@ class MultiObjectiveMountainCarDDQN(object):
             nextState = obs.reshape(1, 2)
             rewardsSum = np.add(rewardsSum, reward)
 
-            loss = self.agent.trainDQN()
+            loss = 0#self.agent.trainDQN()
             self.agent.addMemory((state, action, reward, nextState, done))
             state = nextState
             lossSum += loss

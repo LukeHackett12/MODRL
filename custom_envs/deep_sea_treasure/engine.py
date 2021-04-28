@@ -10,6 +10,8 @@ import pygame
 import os
 import sys
 
+import matplotlib.pyplot as plt
+import matplotlib
 
 class DeepSeaTreasureConstants:
     LINEAR = 0
@@ -45,6 +47,7 @@ class DeepSeaTreasure(object):
         self.frame_stack = frame_stack
         self.screen_width = screen_width
         self.screen_height = screen_height
+        self.frames = deque(maxlen=self.frame_stack)
 
         step_range = max_vertical_step - min_vertical_step + 1
         self.trs = [None for _ in range(width)]
@@ -183,7 +186,7 @@ class DeepSeaTreasure(object):
         solutions = []
         if self.transition_noise == 0.0:
             for i in range(self.num_of_cols):
-                solutions.append([self.treasures[i], self.steps[i]])
+                solutions.append([self.treasures[i]*self.weights[self.chose_weight][0], self.steps[i]])
             return solutions
         else:
             return None
@@ -422,7 +425,8 @@ class DeepSeaTreasure(object):
         for sprite in self.sprites:
             sprite.kill()
 
-        self.agent_col = self.agent_row = 0
+        self.agent_col = 0
+        self.agent_row = 0
         if self.agent_random:
             self.agent_row = 0
             self.agent_col = np.random.randint(0, self.num_of_cols+1)
@@ -432,8 +436,9 @@ class DeepSeaTreasure(object):
         self.__render()
 
         self.total_score_2 = self.total_score = 0
-        frames = [self.process_state(self.get_state(), (self.screen_width, self.screen_height))] * self.frame_stack
-        return LazyFrames(frames, False)
+        for _ in range(self.frame_stack):
+            self.frames.append(self.get_state())
+        return LazyFrames(list(self.frames), False)
 
     def step(self, action):
 
@@ -447,18 +452,18 @@ class DeepSeaTreasure(object):
         self.__render(is_agent)
 
     def step_all(self, action):
-        lz_frames = []
-        terminal = False
-        for _ in range(self.frame_stack):
+        if self.graphical_state:
+            terminal = False
             rewards = self.step(action)
-            lz_frames.append(self.process_state(self.get_state(), (self.screen_width, self.screen_height)))
+            next_state = self.get_state()
+            self.frames.append(self.get_state())
             terminal = self.is_terminal()
-
-            if terminal:
-                lz_frames.extend([self.process_state(self.get_state(), (self.screen_width, self.screen_height))] * (self.frame_stack-len(lz_frames)))
-                break
-
-        return LazyFrames(lz_frames, False), rewards, terminal, 0
+            return LazyFrames(list(self.frames), False), rewards, terminal, 0
+        else:
+            r = self.step(action)
+            next_state = self.get_state()
+            terminal = self.is_terminal()
+            return next_state, r, terminal, 0
 
     def process_state(self, state, size):
         state = cv2.resize(state.astype('float32'), size, interpolation=cv2.INTER_AREA)
@@ -481,7 +486,8 @@ class DeepSeaTreasure(object):
     def get_state(self):
         if self.graphical_state:
             pygame.pixelcopy.surface_to_array(self.current_buffer, self.screen)
-            return self.current_buffer
+            frame = self.process_state(self.current_buffer, (self.screen_width, self.screen_height))
+            return frame
         else:
             return np.array([self.agent_col, self.agent_row])
 

@@ -39,7 +39,7 @@ class Transition(NamedTuple):
 
 
 class DQNAgent(object):
-    def __init__(self, stateShape, actionSpace, numPicks, memorySize, numRewards, sync=100, burnin=500, alpha=0.00025, epsilon=1, epsilon_decay=0.99975, epsilon_min=0.01, gamma=0.9):
+    def __init__(self, stateShape, actionSpace, numPicks, memorySize, numRewards, sync=50, burnin=500, alpha=0.0001, epsilon=1, epsilon_decay=0.99975, epsilon_min=0.01, gamma=0.99):
         self.numPicks = numPicks
         self.replayMemory = deque(maxlen=memorySize)
         self.stateShape = stateShape
@@ -198,9 +198,10 @@ class DQNAgent(object):
 
     def save(self):
         save_path = (
-            f"./mountain_car_wnet_{int(self.step)}.chkpt"
+            f"./dst_wnet_{int(self.step)}.chkpt"
         )
-        print(f"MountainNet saved to {save_path} done!")
+
+        print(f"DSTNET saved to {save_path} done!")
 
 
 class DeepSeaGraphicalWAgent(object):
